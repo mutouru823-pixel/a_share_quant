@@ -45,6 +45,142 @@ RESULT_COLUMNS = [
     "suggestion",
     "has_warning",
 ]
+
+
+SYMBOL_PRESETS = {
+    "白酒龙头": "600519,000858,000568",
+    "银行权重": "600036,600000,601398",
+    "新能源": "300750,002594,601012",
+    "半导体": "688981,603501,300223",
+}
+
+
+def inject_custom_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+
+        :root {
+            --bg-soft: #f3f8f7;
+            --card: #ffffff;
+            --brand: #006c67;
+            --brand-soft: #d6f0eb;
+            --accent: #f55d3e;
+            --text-main: #102a43;
+            --text-sub: #486581;
+        }
+
+        html, body, [data-testid="stAppViewContainer"] {
+            font-family: 'Noto Sans SC', sans-serif;
+            color: var(--text-main);
+            background:
+                radial-gradient(circle at 10% 10%, #fef4ea 0%, rgba(254, 244, 234, 0) 36%),
+                radial-gradient(circle at 90% 0%, #d9f5ef 0%, rgba(217, 245, 239, 0) 40%),
+                linear-gradient(170deg, #f5fbfa 0%, #eef6f7 100%);
+        }
+
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #12343b 0%, #1f4a52 100%);
+        }
+
+        [data-testid="stSidebar"] * {
+            color: #f5fffc;
+        }
+
+        [data-testid="stMetric"] {
+            background: var(--card);
+            border: 1px solid #d9e2ec;
+            border-radius: 14px;
+            padding: 12px 14px;
+            box-shadow: 0 10px 22px rgba(16, 42, 67, 0.08);
+        }
+
+        .hero-panel {
+            background: linear-gradient(110deg, #0b3c49 0%, #006c67 48%, #3aa17e 100%);
+            border-radius: 18px;
+            padding: 20px 22px;
+            margin-bottom: 12px;
+            color: #f5fffc;
+            box-shadow: 0 16px 40px rgba(16, 42, 67, 0.18);
+        }
+
+        .hero-title {
+            margin: 0;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+        }
+
+        .hero-sub {
+            margin: 6px 0 0;
+            color: #ddfff4;
+            font-size: 14px;
+        }
+
+        .tag-chip {
+            display: inline-block;
+            margin-top: 8px;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 999px;
+            padding: 3px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def build_results_table(monitor_results: list[dict]) -> pd.DataFrame:
+    if not monitor_results:
+        return pd.DataFrame()
+
+    results_df = pd.DataFrame(monitor_results)
+    show_cols = [col for col in RESULT_COLUMNS if col in results_df.columns]
+    return results_df[show_cols] if show_cols else results_df
+
+
+def render_price_charts(raw_data_cache: dict[str, pd.DataFrame]) -> None:
+    if not raw_data_cache:
+        st.info("暂无可绘制价格数据，先执行分析后查看图表。")
+        return
+
+    chart_symbol = st.selectbox("选择图表标的", options=list(raw_data_cache.keys()), key="chart_symbol")
+    raw_df = raw_data_cache.get(chart_symbol, pd.DataFrame()).copy()
+    if raw_df.empty:
+        st.warning("当前标的暂无原始数据。")
+        return
+
+    raw_df.columns = [str(c).strip() for c in raw_df.columns]
+    possible_date_cols = ["日期", "date", "Date"]
+    possible_price_cols = ["收盘", "close", "Close"]
+    date_col = next((c for c in possible_date_cols if c in raw_df.columns), None)
+    close_col = next((c for c in possible_price_cols if c in raw_df.columns), None)
+
+    if not date_col or not close_col:
+        st.warning("原始数据字段不完整，无法绘制趋势图。")
+        return
+
+    plot_df = raw_df[[date_col, close_col]].dropna().copy()
+    plot_df[date_col] = pd.to_datetime(plot_df[date_col], errors="coerce")
+    plot_df[close_col] = pd.to_numeric(plot_df[close_col], errors="coerce")
+    plot_df = plot_df.dropna().sort_values(date_col)
+    if plot_df.empty:
+        st.warning("清洗后没有可用数据点，无法绘图。")
+        return
+
+    st.line_chart(plot_df.set_index(date_col)[close_col], height=320)
+    latest_close = float(plot_df[close_col].iloc[-1])
+    first_close = float(plot_df[close_col].iloc[0])
+    pct_move = ((latest_close - first_close) / first_close * 100.0) if first_close else 0.0
+    st.caption(f"{chart_symbol} 期间累计涨跌幅: {pct_move:+.2f}%")
+
+
 def infer_exchange_prefix(code: str) -> str:
     if code.startswith(("60", "68", "90")):
         return "sh"
@@ -103,7 +239,17 @@ def parse_symbols_input(raw_text: str) -> tuple[list[str], list[str], list[str]]
 
 def main() -> None:
     st.set_page_config(page_title="A 股量化监控系统", page_icon="📈", layout="wide")
-    st.title("📈 A 股量化监控系统")
+    inject_custom_styles()
+    st.markdown(
+        """
+        <div class="hero-panel">
+            <h1 class="hero-title">A 股量化监控操作台</h1>
+            <p class="hero-sub">输入股票代码后可直接执行分析、查看评分、观察价格趋势，并一键发送飞书提醒。</p>
+            <span class="tag-chip">AkShare 实时驱动</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if "analysis_cache" not in st.session_state:
         st.session_state["analysis_cache"] = {
@@ -121,6 +267,14 @@ def main() -> None:
 
     with st.sidebar:
         st.header("配置")
+
+        preset_name = st.selectbox("快速模板", options=["自定义"] + list(SYMBOL_PRESETS.keys()), key="symbol_preset")
+        if preset_name != "自定义":
+            preset_symbols = SYMBOL_PRESETS[preset_name]
+            if st.button("填充模板股票", width="stretch", key="apply_preset"):
+                st.session_state["target_symbols_input"] = preset_symbols
+                symbols_input = preset_symbols
+                st.rerun()
 
         symbols_input = st.text_area(
             "请输入自选股代码（逗号或换行分隔）",
@@ -154,10 +308,9 @@ def main() -> None:
     target_symbols, invalid_tokens, unsupported_tokens = parse_symbols_input(symbols_input)
 
     if invalid_tokens:
-        if invalid_tokens:
-            st.warning(f"⚠️ 检测到无效代码并已忽略: {', '.join(invalid_tokens)}")
+        st.warning(f"⚠️ 检测到无效代码并已忽略: {', '.join(invalid_tokens)}")
     if unsupported_tokens:
-            st.warning(f"⚠️ 检测到暂不支持的非沪深代码并已忽略: {', '.join(unsupported_tokens)}")
+        st.warning(f"⚠️ 检测到暂不支持的非沪深代码并已忽略: {', '.join(unsupported_tokens)}")
 
     if not target_symbols:
         st.error("❌ 请先输入至少一个有效 6 位股票代码（如 600519 或 000001）。")
@@ -336,22 +489,29 @@ def main() -> None:
     metric_col_3.metric("主力净流入(万元)", f"{total_fund_net:,.0f}")
     metric_col_4.metric("预警数量", len(alerts))
 
-    st.subheader("📈 领涨板块（AkShare 实时数据）")
-    if sectors:
-        sectors_df = pd.DataFrame(sectors)
-        st.dataframe(sectors_df, width="stretch", hide_index=True)
-        st.caption(f"数据来自 AkShare api：stock_board_industry_name_em（获取 {len(sectors)} 个板块）")
-    else:
-        st.error("❌ AkShare 未返回领涨板块数据。可能是网络问题或服务暂时不可用。")
+    overview_tab, chart_tab, table_tab = st.tabs(["市场总览", "趋势图表", "策略明细"])
 
-    st.subheader("🎯 策略分析结果（基于 AkShare 实时数据）")
-    if monitor_results:
-        results_df = pd.DataFrame(monitor_results)
-        show_cols = [col for col in RESULT_COLUMNS if col in results_df.columns]
-        st.dataframe(results_df[show_cols] if show_cols else results_df, width="stretch", hide_index=True)
-        st.caption(f"✓ 成功分析 {len(monitor_results)} 只股票，每只股票的数据来自 AkShare API")
-    else:
-        st.error("❌ 扫描结果为空 — AkShare 数据源异常或全部标的获取失败。请检查：\n1. 网络连接状态\n2. 股票代码是否有效\n3. AkShare 服务可用性")
+    with overview_tab:
+        st.subheader("📈 领涨板块（AkShare 实时数据）")
+        if sectors:
+            sectors_df = pd.DataFrame(sectors)
+            st.dataframe(sectors_df, width="stretch", hide_index=True)
+            st.caption(f"数据来自 AkShare api：stock_board_industry_name_em（获取 {len(sectors)} 个板块）")
+        else:
+            st.error("❌ AkShare 未返回领涨板块数据。可能是网络问题或服务暂时不可用。")
+
+    with chart_tab:
+        st.subheader("📉 个股收盘价趋势")
+        render_price_charts(raw_data_cache)
+
+    with table_tab:
+        st.subheader("🎯 策略分析结果（基于 AkShare 实时数据）")
+        results_df = build_results_table(monitor_results)
+        if not results_df.empty:
+            st.dataframe(results_df, width="stretch", hide_index=True)
+            st.caption(f"✓ 成功分析 {len(results_df)} 只股票，每只股票的数据来自 AkShare API")
+        else:
+            st.error("❌ 扫描结果为空 — AkShare 数据源异常或全部标的获取失败。请检查：\n1. 网络连接状态\n2. 股票代码是否有效\n3. AkShare 服务可用性")
 
     if run_analysis and webhook and monitor_results:
         try:
