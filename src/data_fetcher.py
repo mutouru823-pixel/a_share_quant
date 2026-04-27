@@ -19,9 +19,12 @@ USER_AGENTS = [
 # 全局替换 requests.Session.request 以注入 random User-Agent 彻底解决 RemoteDisconnected 错误
 _original_request = requests.Session.request
 def _mocked_request(self, method, url, **kwargs):
-    headers = kwargs.get('headers', {})
-    headers['User-Agent'] = random.choice(USER_AGENTS)
-    kwargs['headers'] = headers
+    headers = kwargs.get('headers')
+    if headers is None:
+        headers = {}
+        kwargs['headers'] = headers
+    if 'User-Agent' not in headers:
+        headers['User-Agent'] = random.choice(USER_AGENTS)
     return _original_request(self, method, url, **kwargs)
 requests.Session.request = _mocked_request
 
@@ -53,9 +56,7 @@ def _clean_symbol(symbol: str) -> str:
     stop=stop_after_attempt(3),
     wait=wait_fixed(20),
     retry=retry_if_exception_type(Exception),
-    before_sleep=lambda retry_state: logger.warning(
-        f"获取数据失败，正在进行第 {retry_state.attempt_number} 次重试..."
-    )
+    before_sleep=lambda retry_state: logger.warning(f"获取日线数据失败，等待20s后第 {retry_state.attempt_number} 次重试...")
 )
 def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     """
@@ -86,14 +87,18 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     logger.info(f"防封锁机制：随机休眠 {sleep_time:.2f} 秒...")
     time.sleep(sleep_time)
     
-    # 获取 A 股日线数据（qfq：前复权）
-    df = ak.stock_zh_a_hist(
-        symbol=clean_symbol, 
-        period="daily", 
-        start_date=start_str, 
-        end_date=end_str, 
-        adjust="qfq"
-    )
+    try:
+        # 获取 A 股日线数据（qfq：前复权）
+        df = ak.stock_zh_a_hist(
+            symbol=clean_symbol, 
+            period="daily", 
+            start_date=start_str, 
+            end_date=end_str, 
+            adjust="qfq"
+        )
+    except Exception as e:
+        logger.warning(f"获取 {symbol} 日线数据失败: {e}")
+        return pd.DataFrame()
     
     if df is None or df.empty:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
@@ -113,7 +118,7 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     missing_cols = [col for col in column_mapping.keys() if col not in df.columns]
     if missing_cols:
         logger.error(f"AkShare 响应的格式不符合预期，缺少列：{missing_cols}")
-        raise ValueError(f"返回数据缺少必要字段: {missing_cols}")
+        return pd.DataFrame()
         
     # 重命名列
     df = df.rename(columns=column_mapping)
@@ -235,12 +240,6 @@ def fetch_sentiment_score(symbol: str) -> float:
         
         return max(-1.0, min(1.0, score))
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(20),
-    retry=retry_if_exception_type(Exception),
-    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
-)
 def fetch_fund_flow(symbol: str) -> dict:
     """
     获取个股主力净流入数据
