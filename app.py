@@ -570,7 +570,7 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
             c3.metric(
                 "最大回撤(优化后)",
                 f"{float(cmp_cache.get('opt_mdd', 0.0)):.2%}",
-                delta=f"{(float(cmp_cache.get('opt_mdd', 0.0)) - float(cmp_cache.get('base_mdd', 0.0)):+.2%}",
+                delta=f"{(float(cmp_cache.get('opt_mdd', 0.0)) - float(cmp_cache.get('base_mdd', 0.0))):+.2%}",
             )
 
             eq_df = cmp_cache.get("compare_equity")
