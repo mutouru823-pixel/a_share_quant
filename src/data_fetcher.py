@@ -156,12 +156,6 @@ def fetch_realtime_data(symbol: str) -> pd.DataFrame:
     df = ak.stock_individual_info_em(symbol=clean_sym)
     return df
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_fixed(3),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError)),
-    before_sleep=lambda retry_state: logger.warning(f"获取板块数据连接失败，3秒后重试第 {retry_state.attempt_number} 次...")
-)
 def fetch_top_sectors(n: int = 5) -> list:
     """获取今日涨幅前几名的板块（非关键数据，失败不影响主流程）"""
     logger.info(f"获取今日涨幅前 {n} 的板块...")
