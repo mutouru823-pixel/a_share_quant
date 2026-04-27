@@ -170,22 +170,22 @@ def fetch_top_sectors(n: int = 5) -> list:
         logger.warning(f"获取板块数据失败（非关键步骤，跳过）: {e}")
     return []
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(20),
-    retry=retry_if_exception_type(Exception),
-    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
-)
 def fetch_sentiment_score(symbol: str) -> float:
     """
     Phase 3 升级：使用 NLP 分析舆情
     抓取个股最新新闻标题，使用 NLP 模型/词汇库判断情感倾向
     返回: -1.0 (负面) ~ +1.0 (正面)
     """
-    from nlp_sentiment import SentimentAggregator
-    
     clean_symbol = _clean_symbol(symbol)
     logger.info(f"[Phase 3] 获取 {symbol} 近期舆情并进行 NLP 分析...")
+    
+    # 延迟导入 SentimentAggregator（避免 SyntaxError 导致 RetryError）
+    try:
+        from nlp_sentiment import SentimentAggregator
+    except Exception as e:
+        logger.warning(f"导入 SentimentAggregator 失败: {e}")
+        return 0.0
+    
     try:
         df = ak.stock_news_em(symbol=clean_symbol)
     except Exception as e:
