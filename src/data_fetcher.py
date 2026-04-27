@@ -98,7 +98,7 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
         )
     except Exception as e:
         logger.warning(f"获取 {symbol} 日线数据失败: {e}")
-        return pd.DataFrame()
+        raise
     
     if df is None or df.empty:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
