@@ -1,8 +1,26 @@
 import logging
 import pandas as pd
-from ml_scoring import EnsembleScorer
 
 logger = logging.getLogger(__name__)
+
+# Phase 3: 延迟导入 ML 评分器（避免导入路径问题）
+_ensemble_scorer = None
+
+def _get_ensemble_scorer():
+    """延迟导入并缓存 EnsembleScorer 实例"""
+    global _ensemble_scorer
+    if _ensemble_scorer is None:
+        try:
+            from ml_scoring import EnsembleScorer
+            _ensemble_scorer = EnsembleScorer()
+        except ImportError:
+            try:
+                from src.ml_scoring import EnsembleScorer
+                _ensemble_scorer = EnsembleScorer()
+            except ImportError:
+                logger.warning("无法加载 ml_scoring 模块，将使用基础加权方案")
+                _ensemble_scorer = False
+    return _ensemble_scorer
 
 
 def _to_scalar_float(value, default: float = 0.0) -> float:
@@ -46,8 +64,8 @@ class StrategyMonitor:
         if len(self.df) < 20:
             logger.warning(f"{symbol} 数据量只有 {len(self.df)} 行，无法完整计算技术指标")
 
-        # Phase 3：初始化 AI 多因子融合器
-        self.ensemble_scorer = EnsembleScorer()
+        # Phase 3：延迟加载 AI 多因子融合器（避免导入路径问题）
+        self.ensemble_scorer = _get_ensemble_scorer()
 
         self._calculate_indicators()
         self._generate_signals()
@@ -148,11 +166,17 @@ class StrategyMonitor:
             'fundamental_score': fundamental_score,
             'sentiment_score': sentiment_score,
         }
-        try:
-            ensemble_score = self.ensemble_scorer.calculate_ensemble_score(signal)
-            logger.info(f"[Phase 3] {self.symbol} AI 多因子评分: {ensemble_score:.2f}")
-        except Exception as e:
-            logger.warning(f"AI 融合评分失败: {e}，使用加权平均")
+        if self.ensemble_scorer:
+            try:
+                ensemble_score = self.ensemble_scorer.calculate_ensemble_score(signal)
+                logger.info(f"[Phase 3] {self.symbol} AI 多因子评分: {ensemble_score:.2f}")
+            except Exception as e:
+                logger.warning(f"AI 融合评分失败: {e}，使用加权平均")
+                ensemble_score = None
+        else:
+            ensemble_score = None
+
+        if ensemble_score is None:
             ensemble_score = (
                 tech_score * 0.4 +
                 chip_score * 0.3 +
