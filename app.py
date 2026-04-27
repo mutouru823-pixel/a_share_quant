@@ -23,6 +23,8 @@ from src.data_fetcher import (
 )
 from src.notifier import FeishuNotifier
 from src.strategy_monitor import StrategyMonitor
+from src.analysis_report import StockAnalysisReport
+from src.reasoning_engine import ReasoningEngine
 
 
 FEISHU_WEBHOOK_PREFIX = "https://open.feishu.cn/open-apis/bot/v2/hook/"
@@ -179,6 +181,85 @@ def render_price_charts(raw_data_cache: dict[str, pd.DataFrame]) -> None:
     first_close = float(plot_df[close_col].iloc[0])
     pct_move = ((latest_close - first_close) / first_close * 100.0) if first_close else 0.0
     st.caption(f"{chart_symbol} 期间累计涨跌幅: {pct_move:+.2f}%")
+
+
+def render_detailed_analysis(monitor_results: list[dict], financial_data_cache: dict = None) -> None:
+    """Phase 2 新增：详细分析报告展示"""
+    if not monitor_results:
+        st.info("暂无分析结果")
+        return
+    
+    financial_data_cache = financial_data_cache or {}
+    
+    # 创建股票选择
+    selected_symbols = st.multiselect(
+        "选择要查看详细分析的股票",
+        options=[r.get('symbol') for r in monitor_results],
+        default=[r.get('symbol') for r in monitor_results[:1]] if monitor_results else [],
+        key="detail_symbol_selector"
+    )
+    
+    if not selected_symbols:
+        st.info("请选择至少一只股票查看详细分析")
+        return
+    
+    for symbol in selected_symbols:
+        # 找到对应的信号数据
+        signal = next((r for r in monitor_results if r.get('symbol') == symbol), None)
+        if not signal:
+            continue
+        
+        # 生成分析报告
+        fin_data = financial_data_cache.get(symbol, {})
+        report = StockAnalysisReport(
+            symbol=symbol,
+            latest_signal=signal,
+            financial_data=fin_data,
+            warnings=signal.get('warnings', [])
+        )
+        
+        # 展示报告卡片
+        with st.container():
+            st.markdown(f"### 📊 {symbol} - 详细分析报告")
+            
+            # 摘要卡片
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("综合评分", f"{report.total_score:.2f}")
+            with col2:
+                st.metric("市场状态", report.market_state)
+            with col3:
+                st.metric("风险等级", report.risk_level)
+            with col4:
+                st.metric("信心度", f"{report.confidence:.0%}")
+            
+            # 建议卡片
+            st.info(f"💡 {report.summary}")
+            
+            # 多维评分
+            score_col1, score_col2, score_col3, score_col4 = st.columns(4)
+            with score_col1:
+                st.markdown(f"📈 **技术面**: {report.metrics['tech_score']:+.1f}")
+            with score_col2:
+                st.markdown(f"💰 **筹码面**: {report.metrics['chip_score']:+.1f}")
+            with score_col3:
+                st.markdown(f"📋 **基本面**: {report.metrics['fundamental_score']:+.1f}")
+            with score_col4:
+                st.markdown(f"📰 **情绪面**: {report.metrics['sentiment_score']:+.1f}")
+            
+            # 详细文字解读
+            with st.expander("📖 详细分析解读（点击展开）", expanded=False):
+                st.markdown(report.detailed_reasoning)
+            
+            # 风控预警
+            if report.warnings:
+                with st.expander(f"⚠️ 风控预警（{len(report.warnings)} 条）", expanded=True):
+                    for warning in report.warnings:
+                        st.warning(warning)
+            else:
+                st.success("✅ 暂无风控预警")
+            
+            st.divider()
 
 
 def infer_exchange_prefix(code: str) -> str:
@@ -489,7 +570,7 @@ def main() -> None:
     metric_col_3.metric("主力净流入(万元)", f"{total_fund_net:,.0f}")
     metric_col_4.metric("预警数量", len(alerts))
 
-    overview_tab, chart_tab, table_tab = st.tabs(["市场总览", "趋势图表", "策略明细"])
+    overview_tab, chart_tab, table_tab, detail_tab = st.tabs(["市场总览", "趋势图表", "策略明细", "详细分析"])
 
     with overview_tab:
         st.subheader("📈 领涨板块（AkShare 实时数据）")
@@ -512,6 +593,11 @@ def main() -> None:
             st.caption(f"✓ 成功分析 {len(results_df)} 只股票，每只股票的数据来自 AkShare API")
         else:
             st.error("❌ 扫描结果为空 — AkShare 数据源异常或全部标的获取失败。请检查：\n1. 网络连接状态\n2. 股票代码是否有效\n3. AkShare 服务可用性")
+    
+    with detail_tab:
+        st.subheader("🔬 Phase 2 - 详细分析报告")
+        st.markdown("根据 10 维评分、加权融合、风控规则的完整分析结果")
+        render_detailed_analysis(monitor_results)
 
     if run_analysis and webhook and monitor_results:
         try:
