@@ -81,6 +81,7 @@ def _clean_symbol(symbol: str) -> str:
     stop=stop_after_attempt(3),
     wait=wait_fixed(20),
     retry=retry_if_exception_type(Exception),
+    retry_error_callback=lambda retry_state: pd.DataFrame(),
     before_sleep=lambda retry_state: logger.warning(f"获取日线数据失败，等待20s后第 {retry_state.attempt_number} 次重试...")
 )
 def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
@@ -140,11 +141,11 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
             )
         except Exception as e2:
             logger.warning(f"降级接口也失败: {e2}")
-            raise last_error from e2
+            return pd.DataFrame()
 
     if df is None or df.empty:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
-        raise last_error if last_error else ValueError("AkShare 返回空数据")
+        return pd.DataFrame()
         
     # AkShare 默认返回的中文列名：日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
     column_mapping = {

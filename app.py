@@ -10,7 +10,6 @@ if SRC_DIR not in sys.path:
     sys.path.append(SRC_DIR)
 
 import re
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -21,13 +20,11 @@ from src.data_fetcher import (
     fetch_sentiment_score,
     fetch_top_sectors,
 )
-from src.notifier import FeishuNotifier
 from src.strategy_monitor import StrategyMonitor
 from src.analysis_report import StockAnalysisReport
 from src.reasoning_engine import ReasoningEngine
 
 
-FEISHU_WEBHOOK_PREFIX = "https://open.feishu.cn/open-apis/bot/v2/hook/"
 RESULT_COLUMNS = [
     "symbol",
     "date",
@@ -325,7 +322,7 @@ def main() -> None:
         """
         <div class="hero-panel">
             <h1 class="hero-title">A 股量化监控操作台</h1>
-            <p class="hero-sub">输入股票代码后可直接执行分析、查看评分、观察价格趋势，并一键发送飞书提醒。</p>
+            <p class="hero-sub">输入股票代码后可直接执行分析、查看评分、观察价格趋势与详细解读。</p>
             <span class="tag-chip">AkShare 实时驱动</span>
         </div>
         """,
@@ -344,8 +341,6 @@ def main() -> None:
 
     default_symbols_text = st.session_state.get("last_symbols_input", "")
     default_days = int(st.session_state.get("last_target_days", 200))
-    default_webhook = st.session_state.get("last_webhook", "")
-
     with st.sidebar:
         st.header("配置")
 
@@ -371,20 +366,11 @@ def main() -> None:
             key="target_days_input",
             help="用于拉取历史 K 线数据并计算指标。",
         )
-        webhook = st.text_input(
-            "飞书 Webhook",
-            type="password",
-            value=default_webhook,
-            placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...",
-            help="不填写则不发送飞书提醒。",
-            key="feishu_webhook_input",
-        )
         run_mode = st.radio("运行模式", options=["实时", "收盘"], horizontal=True, key="run_mode")
         run_analysis = st.button("执行分析", type="primary", width="stretch", key="run_analysis")
 
     st.session_state["last_symbols_input"] = symbols_input
     st.session_state["last_target_days"] = int(target_days)
-    st.session_state["last_webhook"] = webhook
 
     target_symbols, invalid_tokens, unsupported_tokens = parse_symbols_input(symbols_input)
 
@@ -409,10 +395,6 @@ def main() -> None:
         st.error("❌ 请至少选择一只股票后再执行分析。")
         return
 
-    if webhook and not webhook.startswith(FEISHU_WEBHOOK_PREFIX):
-        st.error("❌ Webhook 地址格式不正确，请输入飞书官方机器人地址。")
-        return
-
     if run_analysis:
         sectors = []
         monitor_results = []
@@ -420,6 +402,9 @@ def main() -> None:
         sentiment_values = []
         total_fund_net = 0.0
         shown_empty_warning = False
+        sector_fetch_failed = False
+        daily_data_empty_symbols = []
+        symbol_exceptions = []
         debug_logs = []
         raw_data_cache = {}  # 缓存原始 akshare 数据
 
@@ -437,10 +422,14 @@ def main() -> None:
             try:
                 debug_logs.append("[CALL] 调用 fetch_top_sectors(5)...")
                 sectors = fetch_top_sectors(5)
-                debug_logs.append(f"[OK] 成功获取 {len(sectors)} 个板块数据")
+                if sectors:
+                    debug_logs.append(f"[OK] 成功获取 {len(sectors)} 个板块数据")
+                else:
+                    debug_logs.append("[WARN] fetch_top_sectors 返回空列表（非阻断，继续个股分析）")
             except Exception as exc:
+                sector_fetch_failed = True
                 debug_logs.append(f"[ERROR] fetch_top_sectors 异常: {str(exc)}")
-                st.error(f"获取领涨板块失败: {exc}")
+                st.warning(f"获取领涨板块失败（不影响个股分析）: {exc}")
 
             debug_logs.append("")
             debug_logs.append("[LOOP] 开始逐只股票分析...")
@@ -453,9 +442,10 @@ def main() -> None:
                     debug_logs.append(f"  🔄 正在从 AkShare api：stock_zh_a_hist 获取 {symbol} 近 {int(target_days)} 日数据...")
                     df = fetch_daily_data(symbol=symbol, days=int(target_days))
                     if df is None or df.empty:
-                        debug_logs.append(f"  [WARN] ❌ akshare 返回空数据帧 - 可能是网络问题或股票代码格式错误")
+                        daily_data_empty_symbols.append(symbol)
+                        debug_logs.append("  [WARN] ❌ 日线数据为空（可能是网络抖动、AkShare 限流或该区间暂无有效数据）")
                         if not shown_empty_warning:
-                            st.error("❌ AkShare 接口未返回数据，请检查：\n1. 网络连接\n2. 股票代码格式（如 600519 或 sh600519）\n3. 股票代码是否有效")
+                            st.warning("⚠️ 部分股票日线数据为空，系统将自动跳过并继续分析其他股票。")
                             shown_empty_warning = True
                         continue
 
@@ -491,19 +481,33 @@ def main() -> None:
                     else:
                         debug_logs.append(f"  [WARN] get_latest_signal 返回空")
                 except Exception as exc:
+                    symbol_exceptions.append((symbol, str(exc)))
                     debug_logs.append(f"  [ERROR] {symbol} 异常: {str(exc)}")
                     st.error(f"处理 {symbol} 时发生异常: {exc}")
 
             if not monitor_results and not shown_empty_warning:
-                st.error("接口未返回数据，请检查股票代码格式（如 600519、000001）")
+                st.error("本次未得到可用结果：请优先检查网络与 AkShare 服务状态，再重试。")
+
+            if daily_data_empty_symbols:
+                st.info(
+                    "跳过日线为空标的: " + ", ".join(daily_data_empty_symbols)
+                )
+            if symbol_exceptions:
+                st.warning(
+                    "发生处理异常标的: " + ", ".join([s for s, _ in symbol_exceptions])
+                )
 
             debug_logs.append("")
             debug_logs.append("[COMPLETE] 分析完成")
             debug_logs.append(f"  ✓ 成功处理: {len(monitor_results)} 只")
             debug_logs.append(f"  ⚠️  预警数: {len(alerts)} 只")
+            debug_logs.append(f"  跳过(空数据): {len(daily_data_empty_symbols)} 只")
+            debug_logs.append(f"  异常失败: {len(symbol_exceptions)} 只")
             if sentiment_values:
                 debug_logs.append(f"  情绪均值: {round(sum(sentiment_values) / len(sentiment_values), 2)}")
             debug_logs.append(f"  资金净流入: {total_fund_net:,.0f} 万元")
+            if sector_fetch_failed:
+                debug_logs.append("  板块数据状态: 获取失败（不影响个股分析）")
 
         # 在页面上显示完整执行日志
         with progress_placeholder.expander("📋 执行日志详情（点击展开查看 AkShare API 调用链路）", expanded=False):
@@ -579,7 +583,7 @@ def main() -> None:
             st.dataframe(sectors_df, width="stretch", hide_index=True)
             st.caption(f"数据来自 AkShare api：stock_board_industry_name_em（获取 {len(sectors)} 个板块）")
         else:
-            st.error("❌ AkShare 未返回领涨板块数据。可能是网络问题或服务暂时不可用。")
+            st.warning("⚠️ 当前未获取到领涨板块数据（不影响个股策略分析结果）。")
 
     with chart_tab:
         st.subheader("📉 个股收盘价趋势")
@@ -592,26 +596,12 @@ def main() -> None:
             st.dataframe(results_df, width="stretch", hide_index=True)
             st.caption(f"✓ 成功分析 {len(results_df)} 只股票，每只股票的数据来自 AkShare API")
         else:
-            st.error("❌ 扫描结果为空 — AkShare 数据源异常或全部标的获取失败。请检查：\n1. 网络连接状态\n2. 股票代码是否有效\n3. AkShare 服务可用性")
+            st.warning("⚠️ 扫描结果为空：常见原因是网络抖动、AkShare 服务波动或当前标的数据暂不可用。")
     
     with detail_tab:
         st.subheader("🔬 Phase 2 - 详细分析报告")
         st.markdown("根据 10 维评分、加权融合、风控规则的完整分析结果")
         render_detailed_analysis(monitor_results)
-
-    if run_analysis and webhook and monitor_results:
-        try:
-            notifier = FeishuNotifier(webhook_url=webhook)
-            notifier.send_signal_alert(
-                symbol="SYSTEM",
-                trigger_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                reason=f"{run_mode}模式分析完成，共扫描{len(monitor_results)}只股票（数据源：AkShare）",
-                current_price=0.0,
-            )
-            st.success("✅ 分析完成，已发送飞书提醒（包含 AkShare 实时数据）。")
-        except Exception as exc:
-            st.error(f"❌ 飞书提醒发送失败（但本地分析结果已生成）: {exc}")
-
 
 if __name__ == "__main__":
     main()
