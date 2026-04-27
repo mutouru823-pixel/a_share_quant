@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import akshare as ak
 from tenacity import retry, wait_fixed, stop_after_attempt, retry_if_exception_type
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # 随机User-Agent列表，防止被封锁
 USER_AGENTS = [
@@ -16,17 +18,40 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0"
 ]
 
-# 全局替换 requests.Session.request 以注入 random User-Agent 彻底解决 RemoteDisconnected 错误
+# 全局替换 requests.Session.request 以注入 random User-Agent 和超时
 _original_request = requests.Session.request
+
 def _mocked_request(self, method, url, **kwargs):
-    headers = kwargs.get('headers')
-    if headers is None:
-        headers = {}
-        kwargs['headers'] = headers
-    if 'User-Agent' not in headers:
-        headers['User-Agent'] = random.choice(USER_AGENTS)
+    # 注入 User-Agent（不覆盖已有值）
+    if 'headers' not in kwargs or kwargs['headers'] is None:
+        kwargs['headers'] = {}
+    if 'User-Agent' not in kwargs['headers']:
+        kwargs['headers']['User-Agent'] = random.choice(USER_AGENTS)
+    # 强制设置超时（AkShare 部分接口默认无超时，在海外网络易卡死）
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = (15, 60)  # (connect_timeout, read_timeout)
     return _original_request(self, method, url, **kwargs)
+
 requests.Session.request = _mocked_request
+
+# 为所有 requests.Session 添加 urllib3 级别重试适配器（处理 DNS/连接层错误）
+_original_requests_session_init = requests.Session.__init__
+
+
+def _patched_session_init(self, *args, **kwargs):
+    _original_requests_session_init(self, *args, **kwargs)
+    retry_strategy = Retry(
+        total=2,
+        backoff_factor=0.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "POST"],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    self.mount("https://", adapter)
+    self.mount("http://", adapter)
+
+
+requests.Session.__init__ = _patched_session_init
 
 logger = logging.getLogger(__name__)
 
@@ -87,22 +112,39 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     logger.info(f"防封锁机制：随机休眠 {sleep_time:.2f} 秒...")
     time.sleep(sleep_time)
     
+    df = None
+    last_error = None
+
+    # 主接口：stock_zh_a_hist (东方财富数据源)
     try:
-        # 获取 A 股日线数据（qfq：前复权）
         df = ak.stock_zh_a_hist(
-            symbol=clean_symbol, 
-            period="daily", 
-            start_date=start_str, 
-            end_date=end_str, 
-            adjust="qfq"
+            symbol=clean_symbol,
+            period="daily",
+            start_date=start_str,
+            end_date=end_str,
+            adjust="qfq",
         )
     except Exception as e:
-        logger.warning(f"获取 {symbol} 日线数据失败: {e}")
-        raise
-    
+        last_error = e
+        logger.warning(f"主接口 stock_zh_a_hist 失败: {e}")
+
+    # 降级接口：stock_zh_a_daily (新浪数据源，海外可达性更高)
+    if (df is None or df.empty) and last_error is not None:
+        logger.info(f"尝试降级接口 stock_zh_a_daily 获取 {symbol}...")
+        try:
+            df = ak.stock_zh_a_daily(
+                symbol=f"{'sh' if symbol.startswith('sh') or (not symbol.startswith('sz') and symbol[0] in ('6', '9')) else 'sz'}{clean_symbol}",
+                start_date=start_str,
+                end_date=end_str,
+                adjust="qfq",
+            )
+        except Exception as e2:
+            logger.warning(f"降级接口也失败: {e2}")
+            raise last_error from e2
+
     if df is None or df.empty:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
-        return pd.DataFrame()
+        raise last_error if last_error else ValueError("AkShare 返回空数据")
         
     # AkShare 默认返回的中文列名：日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
     column_mapping = {
