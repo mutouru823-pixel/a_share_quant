@@ -55,6 +55,9 @@ class StockAnalysisReport:
             'rsi': self.latest_signal.get('RSI_14', 0),
             'close': self.latest_signal.get('close', 0),
             'pct_change': self.latest_signal.get('pct_change', 0),
+            'volatility_20': self.latest_signal.get('volatility_20', 0),
+            'risk_penalty': self.latest_signal.get('risk_penalty', 0),
+            'recommended_position': self.latest_signal.get('recommended_position', 0),
         }
 
     def _calc_risk_level(self) -> str:
@@ -66,6 +69,13 @@ class StockAnalysisReport:
         return "中"
 
     def _calc_confidence(self) -> float:
+        if 'confidence_score' in self.latest_signal:
+            try:
+                conf = float(self.latest_signal.get('confidence_score', 0.5))
+                return max(0.1, min(0.98, conf))
+            except (TypeError, ValueError):
+                pass
+
         scores = [self.metrics['tech_score'], self.metrics['chip_score'], self.metrics['sentiment_score']]
         positive_count = sum(1 for s in scores if s > 0)
         negative_count = sum(1 for s in scores if s < 0)

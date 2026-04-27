@@ -39,6 +39,8 @@ RESULT_COLUMNS = [
     "tech_score",
     "chip_score",
     "sentiment_score",
+    "confidence_score",
+    "recommended_position",
     "total_score",
     "market_state",
     "suggestion",

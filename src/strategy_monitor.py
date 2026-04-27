@@ -98,6 +98,12 @@ class StrategyMonitor:
         # 4. 当日收盘相较上一日的涨跌幅
         self.df['pct_change'] = self.df['close'].pct_change()
 
+        # 5. 20日波动率（标准差），用于风险惩罚和仓位建议
+        self.df['volatility_20'] = self.df['pct_change'].rolling(window=20).std()
+
+        # 6. 20日均线斜率（近5日变化），用于趋势过滤
+        self.df['SMA20_slope_5'] = self.df['SMA_20'] - self.df['SMA_20'].shift(5)
+
     def _generate_signals(self):
         """
         生成交易警告信号及综合得分状态。
@@ -130,6 +136,9 @@ class StrategyMonitor:
         rsi = latest.get('RSI_14', 50)
         close_price = latest['close']
         sma20 = latest.get('SMA_20', close_price)
+        sma20_slope_5 = latest.get('SMA20_slope_5', 0)
+        volatility_20 = _to_scalar_float(latest.get('volatility_20', 0), default=0.0)
+        volatility_20 = max(0.0, volatility_20)
 
         tech_score = 0.0
         if is_bull:
@@ -142,6 +151,9 @@ class StrategyMonitor:
             tech_score += 0.1
         if close_price < sma20:
             tech_score -= 0.5
+        # 趋势下行时，削弱技术面得分，避免逆势决策
+        if sma20_slope_5 < 0:
+            tech_score -= 0.1
         tech_score = max(-1.0, min(1.0, tech_score))
 
         # --- 筹码面评分 ---
@@ -157,7 +169,8 @@ class StrategyMonitor:
         fundamental_score = 0.0
 
         # --- 情绪面评分 ---
-        sentiment_score = min(max(self.sentiment_score, -1.0), 1.0) if self.sentiment_score != 0 else 0.0
+        sentiment_raw = _to_scalar_float(self.sentiment_score, default=0.0)
+        sentiment_score = min(max(sentiment_raw, -1.0), 1.0)
 
         # --- AI 多因子融合评分 ---
         signal = {
@@ -184,20 +197,58 @@ class StrategyMonitor:
                 sentiment_score * 0.1
             )
 
+        # --- 风险惩罚与置信度 ---
+        # 波动率越高，风险惩罚越大；上限 35%
+        vol_penalty = min(0.35, volatility_20 * 8.0)
+        warning_penalty = 0.15 if bool(latest.get('any_warning', False)) else 0.0
+        risk_penalty = min(0.45, vol_penalty + warning_penalty)
+
+        adjusted_score = ensemble_score * (1.0 - risk_penalty)
+
+        score_signals = [tech_score, chip_score, fundamental_score, sentiment_score]
+        same_direction = sum(1 for s in score_signals if s > 0) >= 3 or sum(1 for s in score_signals if s < 0) >= 3
+        coherence_bonus = 0.1 if same_direction else 0.0
+        data_quality = 1.0 if len(self.df) >= 60 else 0.8
+        confidence_score = max(
+            0.1,
+            min(0.98, (0.45 + abs(adjusted_score) * 0.4 + coherence_bonus - risk_penalty * 0.6) * data_quality)
+        )
+
+        # 建议仓位（0~100%）: 分数越高、波动越低、置信度越高，仓位越高
+        base_position = max(0.0, min(1.0, abs(adjusted_score)))
+        position_factor = (1.0 - min(0.6, volatility_20 * 10.0)) * confidence_score
+        recommended_position = int(max(0, min(100, round(base_position * position_factor * 100))))
+
+        # 趋势强度: 价格相对20日均线偏离率
+        trend_strength = 0.0
+        if sma20:
+            trend_strength = (close_price / sma20) - 1.0
+
         # 保存评分（标量广播到整个 DataFrame 列）
         self.df['tech_score'] = tech_score
         self.df['chip_score'] = chip_score
         self.df['fundamental_score'] = fundamental_score
         self.df['sentiment_score'] = sentiment_score
-        self.df['total_score'] = ensemble_score
+        self.df['raw_score'] = ensemble_score
+        self.df['risk_penalty'] = risk_penalty
+        self.df['confidence_score'] = confidence_score
+        self.df['recommended_position'] = recommended_position
+        self.df['trend_strength'] = trend_strength
+        self.df['total_score'] = adjusted_score
 
         # 判断市场状态
-        if ensemble_score >= 0.5:
+        if adjusted_score >= 0.6:
             state = 'Risk-on'
-            suggestion = '建议持仓/做多'
-        elif ensemble_score <= -0.5:
+            suggestion = '建议做多（趋势增强）'
+        elif adjusted_score >= 0.25:
+            state = 'Neutral'
+            suggestion = '建议轻仓试多'
+        elif adjusted_score <= -0.6:
             state = 'Risk-off'
-            suggestion = '建议止盈/止损'
+            suggestion = '建议减仓/止损'
+        elif adjusted_score <= -0.25:
+            state = 'Neutral'
+            suggestion = '建议防守观望'
         else:
             state = 'Neutral'
             suggestion = '建议观望'
@@ -234,12 +285,24 @@ class StrategyMonitor:
             "chip_score": latest.get('chip_score', 0),
             "fundamental_score": latest.get('fundamental_score', 0),
             "sentiment_score": latest.get('sentiment_score', 0),
+            "raw_score": latest.get('raw_score', 0),
+            "risk_penalty": latest.get('risk_penalty', 0),
+            "confidence_score": latest.get('confidence_score', 0),
+            "recommended_position": latest.get('recommended_position', 0),
+            "volatility_20": latest.get('volatility_20', 0),
+            "trend_strength": latest.get('trend_strength', 0),
             "total_score": latest.get('total_score', 0),
             "market_state": latest.get('market_state', 'Neutral'),
             "suggestion": latest.get('suggestion', '建议观望'),
             "sell_warning": bool(latest['sell_warning']),
             "unusual_drop_warning": bool(latest['unusual_drop_warning']),
-            "has_warning": bool(latest['any_warning'])
+            "has_warning": bool(latest['any_warning']),
+            "warnings": [
+                w for w, flag in [
+                    ("跌破20日均线且 RSI 过热", bool(latest.get('sell_warning', False))),
+                    ("单日跌幅超过 5%", bool(latest.get('unusual_drop_warning', False)))
+                ] if flag
+            ]
         }
 
 
