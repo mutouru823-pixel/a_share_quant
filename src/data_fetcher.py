@@ -147,8 +147,8 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
         return pd.DataFrame()
         
-    # AkShare 默认返回的中文列名：日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
-    column_mapping = {
+    # AkShare 可能返回中文字段（stock_zh_a_hist）或英文字段（stock_zh_a_daily）
+    cn_mapping = {
         '日期': 'date',
         '开盘': 'open',
         '最高': 'high',
@@ -156,11 +156,21 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
         '收盘': 'close',
         '成交量': 'volume'
     }
-    
-    # 检查期望的列是否存在
-    missing_cols = [col for col in column_mapping.keys() if col not in df.columns]
-    if missing_cols:
-        logger.error(f"AkShare 响应的格式不符合预期，缺少列：{missing_cols}")
+    en_mapping = {
+        'date': 'date',
+        'open': 'open',
+        'high': 'high',
+        'low': 'low',
+        'close': 'close',
+        'volume': 'volume'
+    }
+
+    if all(col in df.columns for col in cn_mapping.keys()):
+        column_mapping = cn_mapping
+    elif all(col in df.columns for col in en_mapping.keys()):
+        column_mapping = en_mapping
+    else:
+        logger.error(f"AkShare 响应格式不符合预期，当前字段: {list(df.columns)}")
         return pd.DataFrame()
         
     # 重命名列

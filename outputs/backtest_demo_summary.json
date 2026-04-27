@@ -1,0 +1,24 @@
+[
+  {
+    "symbol": "sz000001",
+    "trades": 11,
+    "coverage": 0.13924050632911392,
+    "cumulative_return": -0.0008698300124453384,
+    "annualized_return": -0.0027720059474288794,
+    "annualized_volatility": 0.009258470487727174,
+    "sharpe": -2.455371694831318,
+    "max_drawdown": -0.003554678174053527,
+    "hit_rate": 0.36363636363636365
+  },
+  {
+    "symbol": "PORTFOLIO",
+    "trades": 11,
+    "coverage": 0.13924050632911392,
+    "cumulative_return": -0.0008698300124453384,
+    "annualized_return": -0.0027720059474288794,
+    "annualized_volatility": 0.009258470487727174,
+    "sharpe": -2.455371694831318,
+    "max_drawdown": -0.003554678174053527,
+    "hit_rate": 0.05063291139240506
+  }
+]
