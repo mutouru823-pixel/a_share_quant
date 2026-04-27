@@ -23,6 +23,8 @@ from src.data_fetcher import (
 from src.strategy_monitor import StrategyMonitor
 from src.analysis_report import StockAnalysisReport
 from src.reasoning_engine import ReasoningEngine
+from src.backtest_engine import BacktestConfig, run_backtest
+from src.parameter_search import run_parameter_grid_search
 
 
 RESULT_COLUMNS = [
@@ -85,8 +87,33 @@ def inject_custom_styles() -> None:
             background: linear-gradient(180deg, #12343b 0%, #1f4a52 100%);
         }
 
-        [data-testid="stSidebar"] * {
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] small,
+        [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] {
             color: #f5fffc;
+        }
+
+        /* 修复侧边栏输入框白字白底问题 */
+        [data-testid="stSidebar"] textarea,
+        [data-testid="stSidebar"] input,
+        [data-testid="stSidebar"] [data-baseweb="input"] input,
+        [data-testid="stSidebar"] [data-baseweb="textarea"] textarea,
+        [data-testid="stSidebar"] [data-baseweb="select"] input {
+            color: #102a43 !important;
+            -webkit-text-fill-color: #102a43 !important;
+            background: #ffffff !important;
+        }
+
+        [data-testid="stSidebar"] textarea::placeholder,
+        [data-testid="stSidebar"] input::placeholder {
+            color: #7c8aa0 !important;
+            -webkit-text-fill-color: #7c8aa0 !important;
+            opacity: 1;
         }
 
         [data-testid="stMetric"] {
@@ -259,6 +286,297 @@ def render_detailed_analysis(monitor_results: list[dict], financial_data_cache: 
                 st.success("✅ 暂无风控预警")
             
             st.divider()
+
+
+def render_backtest_analysis(selected_symbols: list[str], default_days: int = 260) -> None:
+    st.subheader("🧪 回测分析（Walk-forward）")
+    st.markdown("在网页内直接执行回测并查看收益/风险指标，适合面试演示。")
+
+    if not selected_symbols:
+        st.info("请先在上方选择至少一只股票后再执行回测。")
+        return
+
+    backtest_col1, backtest_col2, backtest_col3 = st.columns(3)
+    with backtest_col1:
+        backtest_days = st.number_input(
+            "回测区间交易日",
+            min_value=90,
+            max_value=1200,
+            value=max(180, int(default_days)),
+            key="backtest_days_input",
+        )
+    with backtest_col2:
+        warmup_days = st.number_input(
+            "预热天数",
+            min_value=20,
+            max_value=200,
+            value=60,
+            key="backtest_warmup_input",
+        )
+    with backtest_col3:
+        benchmark_symbol = st.text_input(
+            "基准指数",
+            value="sh000300",
+            key="backtest_benchmark_input",
+            help="默认使用沪深300。",
+        )
+
+    run_backtest_btn = st.button("执行回测", type="primary", key="run_backtest_web_btn")
+
+    if run_backtest_btn:
+        with st.spinner("正在执行回测，请稍候..."):
+            cfg = BacktestConfig(
+                symbols=selected_symbols,
+                lookback_days=int(backtest_days),
+                warmup_days=int(warmup_days),
+                benchmark_symbol=benchmark_symbol.strip() or "sh000300",
+            )
+            summary_df, detail_df = run_backtest(cfg)
+            st.session_state["backtest_cache"] = {
+                "summary": summary_df,
+                "detail": detail_df,
+                "symbols": selected_symbols,
+                "benchmark": cfg.benchmark_symbol,
+                "days": int(backtest_days),
+                "warmup": int(warmup_days),
+            }
+
+    cache = st.session_state.get("backtest_cache", {})
+    summary_df = cache.get("summary")
+    detail_df = cache.get("detail")
+
+    if summary_df is None or not isinstance(summary_df, pd.DataFrame) or summary_df.empty:
+        st.info("点击“执行回测”开始计算。")
+        return
+
+    st.markdown("### 📈 回测结果总览")
+    st.dataframe(summary_df, width="stretch", hide_index=True)
+
+    portfolio = summary_df[summary_df["symbol"] == "PORTFOLIO"]
+    if portfolio.empty:
+        portfolio = summary_df.head(1)
+    latest = portfolio.iloc[0]
+
+    metric_a, metric_b, metric_c, metric_d = st.columns(4)
+    metric_a.metric("组合累计收益", f"{float(latest.get('cumulative_return', 0.0)):.2%}")
+    metric_b.metric("组合夏普", f"{float(latest.get('sharpe', 0.0)):.2f}")
+    metric_c.metric("最大回撤", f"{float(latest.get('max_drawdown', 0.0)):.2%}")
+    metric_d.metric("超额收益", f"{float(latest.get('excess_return', 0.0)):.2%}")
+
+    if detail_df is None or not isinstance(detail_df, pd.DataFrame) or detail_df.empty:
+        return
+
+    plot_df = detail_df.copy()
+    plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
+    plot_df = plot_df.dropna(subset=["date"])
+    if plot_df.empty:
+        return
+
+    strategy_daily = plot_df.groupby("date", as_index=True)["strategy_return"].mean().sort_index()
+    equity_df = pd.DataFrame({"strategy": (1 + strategy_daily).cumprod()})
+
+    if "benchmark_return" in plot_df.columns:
+        bench_daily = plot_df.groupby("date", as_index=True)["benchmark_return"].mean().sort_index().fillna(0.0)
+        equity_df["benchmark"] = (1 + bench_daily).cumprod()
+
+    st.markdown("### 📊 策略与基准权益曲线")
+    st.line_chart(equity_df, height=340)
+
+    st.markdown("---")
+    st.markdown("### 🔧 参数网格搜索（Top-N）")
+    st.caption("基于当前回测明细进行阈值调优，输出最优参数组合。")
+
+    gs_col1, gs_col2 = st.columns(2)
+    with gs_col1:
+        long_grid_text = st.text_input(
+            "多头阈值网格",
+            value="0.10,0.20,0.25,0.30",
+            key="grid_long_thresholds",
+            help="示例: 0.10,0.20,0.25",
+        )
+        min_conf_grid_text = st.text_input(
+            "最小置信度网格",
+            value="0.30,0.50,0.70",
+            key="grid_min_confidences",
+            help="示例: 0.30,0.50,0.70",
+        )
+    with gs_col2:
+        short_grid_text = st.text_input(
+            "空头阈值网格",
+            value="0.10,0.20,0.25,0.30",
+            key="grid_short_thresholds",
+            help="示例: 0.10,0.20,0.25",
+        )
+        min_pos_grid_text = st.text_input(
+            "最小建议仓位网格",
+            value="10,20,30,40",
+            key="grid_min_positions",
+            help="示例: 10,20,30,40",
+        )
+
+    top_n = st.number_input(
+        "显示前 N 个参数组合",
+        min_value=3,
+        max_value=50,
+        value=10,
+        key="grid_top_n",
+    )
+
+    run_grid_btn = st.button("执行参数搜索", key="run_grid_search_web_btn")
+
+    def _parse_float_grid(raw_text: str) -> list[float]:
+        vals = []
+        for token in raw_text.replace("，", ",").split(","):
+            token = token.strip()
+            if token:
+                vals.append(float(token))
+        return vals
+
+    if run_grid_btn:
+        try:
+            long_thresholds = _parse_float_grid(long_grid_text)
+            short_thresholds = _parse_float_grid(short_grid_text)
+            min_confidences = _parse_float_grid(min_conf_grid_text)
+            min_positions = _parse_float_grid(min_pos_grid_text)
+
+            if not long_thresholds or not short_thresholds or not min_confidences or not min_positions:
+                st.error("参数网格不能为空。")
+            else:
+                with st.spinner("正在执行参数网格搜索，请稍候..."):
+                    grid_df = run_parameter_grid_search(
+                        detail_df=detail_df,
+                        benchmark_symbol=str(cache.get("benchmark", "sh000300")),
+                        lookback_days=int(cache.get("days", default_days)),
+                        risk_free_rate=0.02,
+                        long_thresholds=long_thresholds,
+                        short_thresholds=short_thresholds,
+                        min_confidences=min_confidences,
+                        min_positions=min_positions,
+                    )
+                    st.session_state["grid_search_cache"] = grid_df
+        except ValueError as e:
+            st.error(f"参数解析失败，请检查输入格式: {e}")
+
+    grid_df = st.session_state.get("grid_search_cache")
+    if isinstance(grid_df, pd.DataFrame) and not grid_df.empty:
+        st.markdown("#### Top 参数组合")
+        st.dataframe(grid_df.head(int(top_n)), width="stretch", hide_index=True)
+
+        best = grid_df.iloc[0]
+        st.success(
+            "最优参数: "
+            f"long={best['long_threshold']:.2f}, "
+            f"short={best['short_threshold']:.2f}, "
+            f"min_conf={best['min_confidence']:.2f}, "
+            f"min_pos={best['min_position']:.0f}"
+        )
+
+        st.markdown("#### 🚀 一键应用 Top-1 参数")
+        apply_top1_btn = st.button("应用 Top-1 并重算对比", key="apply_top1_compare_btn")
+
+        def _calc_sharpe(returns: pd.Series, rf: float = 0.02) -> float:
+            if returns.empty:
+                return 0.0
+            excess = returns - (rf / 252)
+            vol = float(excess.std(ddof=0))
+            if vol <= 1e-8:
+                return 0.0
+            return float(excess.mean() / vol * (252 ** 0.5))
+
+        def _calc_max_dd(equity_curve: pd.Series) -> float:
+            if equity_curve.empty:
+                return 0.0
+            peak = equity_curve.cummax()
+            drawdown = equity_curve / peak - 1.0
+            return float(drawdown.min())
+
+        def _calc_position(score: float, conf: float, rec_pos: float, long_th: float, short_th: float, min_conf: float, min_pos: float) -> float:
+            if conf < min_conf or rec_pos < min_pos:
+                return 0.0
+            pos = max(0.0, min(1.0, rec_pos / 100.0))
+            if score >= long_th:
+                return pos
+            if score <= -short_th:
+                return -pos
+            return 0.0
+
+        if apply_top1_btn:
+            try:
+                if int(best.get("trades", 0)) <= 0:
+                    st.warning("Top-1 参数没有有效交易，暂不建议应用。请调整网格后重试。")
+                else:
+                    cmp_df = detail_df.copy()
+                    cmp_df["date"] = pd.to_datetime(cmp_df["date"], errors="coerce")
+                    cmp_df = cmp_df.dropna(subset=["date"]).sort_values("date")
+
+                    cmp_df["position_opt"] = cmp_df.apply(
+                        lambda r: _calc_position(
+                            score=float(r.get("score", 0.0)),
+                            conf=float(r.get("confidence_score", 0.0)),
+                            rec_pos=float(r.get("recommended_position", 0.0)),
+                            long_th=float(best["long_threshold"]),
+                            short_th=float(best["short_threshold"]),
+                            min_conf=float(best["min_confidence"]),
+                            min_pos=float(best["min_position"]),
+                        ),
+                        axis=1,
+                    )
+                    cmp_df["strategy_return_opt"] = cmp_df["position_opt"] * pd.to_numeric(cmp_df["next_day_return"], errors="coerce").fillna(0.0)
+
+                    base_daily = cmp_df.groupby("date", as_index=True)["strategy_return"].mean().sort_index()
+                    opt_daily = cmp_df.groupby("date", as_index=True)["strategy_return_opt"].mean().sort_index()
+
+                    base_equity = (1 + base_daily).cumprod()
+                    opt_equity = (1 + opt_daily).cumprod()
+
+                    base_ret = float(base_equity.iloc[-1] - 1.0) if not base_equity.empty else 0.0
+                    opt_ret = float(opt_equity.iloc[-1] - 1.0) if not opt_equity.empty else 0.0
+                    base_sharpe = _calc_sharpe(base_daily)
+                    opt_sharpe = _calc_sharpe(opt_daily)
+                    base_mdd = _calc_max_dd(base_equity)
+                    opt_mdd = _calc_max_dd(opt_equity)
+
+                    compare_equity = pd.DataFrame({
+                        "baseline": base_equity,
+                        "optimized": opt_equity,
+                    }).dropna(how="all")
+
+                    st.session_state["top1_compare_cache"] = {
+                        "base_ret": base_ret,
+                        "opt_ret": opt_ret,
+                        "base_sharpe": base_sharpe,
+                        "opt_sharpe": opt_sharpe,
+                        "base_mdd": base_mdd,
+                        "opt_mdd": opt_mdd,
+                        "compare_equity": compare_equity,
+                    }
+            except Exception as e:
+                st.error(f"应用 Top-1 失败: {e}")
+
+        cmp_cache = st.session_state.get("top1_compare_cache")
+        if isinstance(cmp_cache, dict) and cmp_cache:
+            st.markdown("#### 📊 优化前后对比")
+            c1, c2, c3 = st.columns(3)
+            c1.metric(
+                "累计收益(优化后)",
+                f"{float(cmp_cache.get('opt_ret', 0.0)):.2%}",
+                delta=f"{(float(cmp_cache.get('opt_ret', 0.0)) - float(cmp_cache.get('base_ret', 0.0))):+.2%}",
+            )
+            c2.metric(
+                "夏普(优化后)",
+                f"{float(cmp_cache.get('opt_sharpe', 0.0)):.2f}",
+                delta=f"{(float(cmp_cache.get('opt_sharpe', 0.0)) - float(cmp_cache.get('base_sharpe', 0.0))):+.2f}",
+            )
+            c3.metric(
+                "最大回撤(优化后)",
+                f"{float(cmp_cache.get('opt_mdd', 0.0)):.2%}",
+                delta=f"{(float(cmp_cache.get('opt_mdd', 0.0)) - float(cmp_cache.get('base_mdd', 0.0)):+.2%}",
+            )
+
+            eq_df = cmp_cache.get("compare_equity")
+            if isinstance(eq_df, pd.DataFrame) and not eq_df.empty:
+                st.markdown("#### 📉 基线 vs 优化后 权益曲线")
+                st.line_chart(eq_df, height=320)
 
 
 def infer_exchange_prefix(code: str) -> str:
@@ -576,7 +894,7 @@ def main() -> None:
     metric_col_3.metric("主力净流入(万元)", f"{total_fund_net:,.0f}")
     metric_col_4.metric("预警数量", len(alerts))
 
-    overview_tab, chart_tab, table_tab, detail_tab = st.tabs(["市场总览", "趋势图表", "策略明细", "详细分析"])
+    overview_tab, chart_tab, table_tab, detail_tab, backtest_tab = st.tabs(["市场总览", "趋势图表", "策略明细", "详细分析", "回测分析"])
 
     with overview_tab:
         st.subheader("📈 领涨板块（AkShare 实时数据）")
@@ -604,6 +922,9 @@ def main() -> None:
         st.subheader("🔬 Phase 2 - 详细分析报告")
         st.markdown("根据 10 维评分、加权融合、风控规则的完整分析结果")
         render_detailed_analysis(monitor_results)
+
+    with backtest_tab:
+        render_backtest_analysis(selected_symbols, default_days=int(target_days))
 
 if __name__ == "__main__":
     main()
