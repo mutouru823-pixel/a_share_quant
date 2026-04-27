@@ -3,10 +3,54 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+def _to_scalar_float(value, default: float = 0.0) -> float:
+    """将任意输入尽量转换为标量 float，避免 Series/DataFrame 真值歧义。"""
+    try:
+        if isinstance(value, pd.DataFrame):
+            if value.empty:
+                return default
+            value = value.iloc[-1, -1]
+        elif isinstance(value, pd.Series):
+            if value.empty:
+                return default
+            value = value.iloc[-1]
+
+        if isinstance(value, str):
+            value = value.replace(',', '').replace('万', '').strip()
+            if not value:
+                return default
+
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+# Phase 3: 延迟导入 ML 评分器（避免导入循环）
+_ensemble_scorer = None
+
+def _get_ensemble_scorer():
+    """延迟导入 EnsembleScorer"""
+    global _ensemble_scorer
+    if _ensemble_scorer is None:
+        try:
+            from .ml_scoring import EnsembleScorer
+            _ensemble_scorer = EnsembleScorer()
+        except ImportError:
+            # 如果相对导入失败，尝试直接导入
+            try:
+                from ml_scoring import EnsembleScorer
+                _ensemble_scorer = EnsembleScorer()
+            except ImportError:
+                logger.warning("无法加载 ml_scoring 模块，将使用基础加权方案")
+                _ensemble_scorer = False
+    return _ensemble_scorer
+
 class StrategyMonitor:
     """
     量化盯盘策略基础监控类
     参考 Backtrader 风格剥离策略逻辑与数据流，使得易于扩展多只股票。
+    
+    Phase 3 升级：集成 AI 多因子融合评分器
     """
     
     def __init__(self, df: pd.DataFrame, symbol: str, sentiment_score: float = 0.0, fund_data: dict = None):
@@ -15,6 +59,15 @@ class StrategyMonitor:
         self.df = df.copy() 
         self.sentiment_score = sentiment_score
         self.fund_data = fund_data or {}
+        
+        # 检查数据量是否足够计算指标（至少需要20行数据才能计算20日均线等指标）
+        if len(self.df) < 20:
+            logger.warning(f"{symbol} 数据量只有 {len(self.df)} 行，不足以计算完整技术指标，将使用简化模式")
+            # 填充足够行数的 NaN 占位，让后续指标计算不报错
+            pass
+        
+        # Phase 3：延迟初始化 AI 多因子融合器
+        self.ensemble_scorer = _get_ensemble_scorer()
         
         self._calculate_indicators()
         self._generate_signals()
@@ -51,43 +104,50 @@ class StrategyMonitor:
     def _generate_signals(self):
         """生成交易警告信号及综合得分状态"""
         
+        # 将所有含 NaN 的布尔 Series 用 fillna(False) 清洗，避免 pandas 歧义错误
+        # （指标的前 N 行由于 rolling 窗口会有 NaN）
+        
         # === 基础风控告警 ===
         # 跌破20日均线
-        close_above_or_eq_sma_prev = self.df['close'].shift(1) >= self.df['SMA_20'].shift(1)
-        close_below_sma_curr = self.df['close'] < self.df['SMA_20']
+        close_above_or_eq_sma_prev = (self.df['close'].shift(1) >= self.df['SMA_20'].shift(1)).fillna(False)
+        close_below_sma_curr = (self.df['close'] < self.df['SMA_20']).fillna(False)
         cross_below_sma = close_above_or_eq_sma_prev & close_below_sma_curr
         
-        self.df['sell_warning'] = cross_below_sma & (self.df['RSI_14'] > 70)
-        self.df['unusual_drop_warning'] = self.df['pct_change'] <= -0.05
+        rsi_gt_70 = (self.df['RSI_14'] > 70).fillna(False)
+        self.df['sell_warning'] = cross_below_sma & rsi_gt_70
+        self.df['unusual_drop_warning'] = (self.df['pct_change'] <= -0.05).fillna(False)
         self.df['any_warning'] = self.df['sell_warning'] | self.df['unusual_drop_warning']
         
         # === Pro版：多维综合评分 ===
         # 1. 技术面得分 (多头排列 + MACD金叉)
         # 多头排列：MA5 > MA10 > MA20
-        is_bull_arrangement = (self.df['SMA_5'] > self.df['SMA_10']) & (self.df['SMA_10'] > self.df['SMA_20'])
+        is_bull_arrangement = ((self.df['SMA_5'] > self.df['SMA_10']) & (self.df['SMA_10'] > self.df['SMA_20'])).fillna(False)
         
         # MACD 金叉：前一日 DIF <= DEA，今日 DIF > DEA 
-        macd_cross_up = (self.df['MACD_DIF'].shift(1) <= self.df['MACD_DEA'].shift(1)) & (self.df['MACD_DIF'] > self.df['MACD_DEA'])
+        macd_cross_up = ((self.df['MACD_DIF'].shift(1) <= self.df['MACD_DEA'].shift(1)) & (self.df['MACD_DIF'] > self.df['MACD_DEA'])).fillna(False)
         
         # 技术面如果多头排列 + MACD大于0，算作看多。如果破位均线则看空。
         # 用一列 tech_score 记录（+1 表示好，-1 表示坏）
+        macd_pos = (self.df['MACD_DIF'] > 0).fillna(False)
+        close_lt_sma20 = (self.df['close'] < self.df['SMA_20']).fillna(False)
+        
         tech_score = pd.Series(0, index=self.df.index)
-        tech_score[is_bull_arrangement | macd_cross_up | (self.df['MACD_DIF'] > 0)] = 1
-        tech_score[self.df['close'] < self.df['SMA_20']] = -1
+        tech_score[is_bull_arrangement | macd_cross_up | macd_pos] = 1
+        tech_score[close_lt_sma20] = -1
         self.df['tech_score'] = tech_score
 
         # 结合实时传入的 sentiment_score 和 fund_data 算出最后一天的最终得分
         # (因为舆情和盘中筹码是标量，此处将其作用于最后一天的状态)
-        fund_net = self.fund_data.get('主力净流入-净额', 0)
-        if isinstance(fund_net, str):
-            fund_net = float(fund_net.replace(',', '').replace('万', '')) if fund_net else 0
-            
-        chip_score = 1 if fund_net > 0 else (-1 if fund_net < 0 else 0)
-        sent_sc = min(max(self.sentiment_score, -1), 1) if self.sentiment_score != 0 else 0
+        fund_net = _to_scalar_float(self.fund_data.get('主力净流入-净额', 0), default=0.0)
+
+        chip_score = 1.0 if fund_net > 0 else (-1.0 if fund_net < 0 else 0.0)
+        sent_sc_raw = _to_scalar_float(self.sentiment_score, default=0.0)
+        sent_sc = min(max(sent_sc_raw, -1.0), 1.0)
         
-        # 将最新一日的筹码和舆情得分记录下来
-        self.df['chip_score'] = 0
-        self.df['sentiment_score'] = 0
+        # 将最新一日的筹码和舆情得分记录下来（初始化为 float 避免类型错误）
+        self.df['chip_score'] = 0.0
+        self.df['sentiment_score'] = 0.0
+        self.df['fundamental_score'] = 0.0
         self.df.iloc[-1, self.df.columns.get_loc('chip_score')] = chip_score
         self.df.iloc[-1, self.df.columns.get_loc('sentiment_score')] = sent_sc
         
@@ -168,9 +228,13 @@ def run_monitor_for_stocks(stock_data_dict: dict, extra_data: dict = None) -> (l
             continue
             
         ext = extra_data.get(symbol, {})
-        monitor = StrategyMonitor(df, symbol, 
-                                  sentiment_score=ext.get('sentiment', 0.0),
-                                  fund_data=ext.get('fund_data', {}))
+        try:
+            monitor = StrategyMonitor(df, symbol, 
+                                      sentiment_score=ext.get('sentiment', 0.0),
+                                      fund_data=ext.get('fund_data', {}))
+        except Exception as e:
+            logger.error(f"创建 StrategyMonitor ({symbol}) 失败: {e}，跳过此股票")
+            continue
         latest_status = monitor.get_latest_signal()
         
         if latest_status:

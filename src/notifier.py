@@ -126,7 +126,15 @@ class FeishuNotifier:
         if alerts:
             text += "\n⚠️【风控预警信号】⚠️\n"
             for alt in alerts:
-                text += f" - {alt['symbol']}: {alt['reason']} (当前价: {alt['current_price']:.2f})\n"
+                symbol = alt.get('symbol', '未知')
+                reason_parts = []
+                if alt.get('sell_warning'):
+                    reason_parts.append("卖出信号（RSI>70且跌破20日均线）")
+                if alt.get('unusual_drop_warning'):
+                    reason_parts.append("异常跌幅（单日下跌超5%）")
+                reason = "；".join(reason_parts) if reason_parts else "风控预警触发"
+                current_price = alt.get('close', 0.0)
+                text += f" - {symbol}: {reason} (当前价: {current_price:.2f})\n"
 
         text += "\n💡 温馨提示：本分析仅供参考，不构成任何投资建议，股市有风险，入市需谨慎。"
 

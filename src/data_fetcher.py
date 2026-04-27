@@ -157,20 +157,23 @@ def fetch_realtime_data(symbol: str) -> pd.DataFrame:
     return df
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(20),
-    retry=retry_if_exception_type(Exception),
-    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
+    stop=stop_after_attempt(2),
+    wait=wait_fixed(3),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+    before_sleep=lambda retry_state: logger.warning(f"获取板块数据连接失败，3秒后重试第 {retry_state.attempt_number} 次...")
 )
 def fetch_top_sectors(n: int = 5) -> list:
-    """获取今日涨幅前几名的板块"""
+    """获取今日涨幅前几名的板块（非关键数据，失败不影响主流程）"""
     logger.info(f"获取今日涨幅前 {n} 的板块...")
-    df = ak.stock_board_industry_name_em()
-    if df is not None and not df.empty:
-        # 按涨跌幅排序降序
-        df = df.sort_values(by="涨跌幅", ascending=False)
-        top_n = df.head(n)
-        return top_n.to_dict('records')
+    try:
+        df = ak.stock_board_industry_name_em()
+        if df is not None and not df.empty:
+            # 按涨跌幅排序降序
+            df = df.sort_values(by="涨跌幅", ascending=False)
+            top_n = df.head(n)
+            return top_n.to_dict('records')
+    except Exception as e:
+        logger.warning(f"获取板块数据失败（非关键步骤，跳过）: {e}")
     return []
 
 @retry(
@@ -181,12 +184,14 @@ def fetch_top_sectors(n: int = 5) -> list:
 )
 def fetch_sentiment_score(symbol: str) -> float:
     """
-    抓取个股最新新闻标题，并简单判断关键词：
-    利好词：增长、利好、突破、大涨、涨停、分红、回购 (+1)
-    利空词：下跌、利空、爆雷、减持、跌停、亏损、警示 (-1)
+    Phase 3 升级：使用 NLP 分析舆情
+    抓取个股最新新闻标题，使用 NLP 模型/词汇库判断情感倾向
+    返回: -1.0 (负面) ~ +1.0 (正面)
     """
+    from nlp_sentiment import SentimentAggregator
+    
     clean_symbol = _clean_symbol(symbol)
-    logger.info(f"获取 {symbol} 近期舆情...")
+    logger.info(f"[Phase 3] 获取 {symbol} 近期舆情并进行 NLP 分析...")
     try:
         df = ak.stock_news_em(symbol=clean_symbol)
     except Exception as e:
@@ -194,25 +199,47 @@ def fetch_sentiment_score(symbol: str) -> float:
         return 0.0
         
     if df is None or df.empty:
+        logger.warning(f"{symbol} 暂无最新新闻数据")
         return 0.0
-        
-    score = 0
-    # 一般接口返回包含 '新闻内容' 或 '新闻标题' 或 'title' 等列
-    # 我们遍历最新几条记录的文本内容
-    text_content = ""
+    
+    # 收集所有新闻文本
+    news_texts = []
     for col in df.columns:
         if '标题' in col or '内容' in col or 'title' in col.lower() or 'content' in col.lower():
-            text_content += " ".join(df[col].astype(str).head(10).tolist())
-            
-    positive_words = ['增长', '利好', '突破', '大涨', '涨停', '分红', '回购', '增持', '超预期']
-    negative_words = ['下跌', '利空', '爆雷', '减持', '跌停', '亏损', '警示', '立案', '退市']
+            for text in df[col].astype(str).head(20):
+                if text and text != 'nan':
+                    news_texts.append(text)
     
-    for word in positive_words:
-        score += text_content.count(word)
-    for word in negative_words:
-        score -= text_content.count(word)
+    if not news_texts:
+        logger.warning(f"{symbol} 无有效新闻文本")
+        return 0.0
+    
+    # 使用 NLP 分析器聚合舆情
+    try:
+        aggregator = SentimentAggregator()
+        sentiment_score = aggregator.aggregate_sentiment(news_texts)
+        category = aggregator.get_sentiment_category(sentiment_score)
+        logger.info(f"✅ {symbol} NLP 舆情分析完成: {category} (评分: {sentiment_score:+.2f})")
+        return sentiment_score
+    except Exception as e:
+        logger.warning(f"NLP 分析出错，降级到关键词方案: {e}")
+        # 降级方案：使用关键词统计
+        text_content = " ".join(news_texts)
+        score = 0
+        positive_words = ['增长', '利好', '突破', '大涨', '涨停', '分红', '回购', '增持', '超预期']
+        negative_words = ['下跌', '利空', '爆雷', '减持', '跌停', '亏损', '警示', '立案', '退市']
         
-    return score
+        for word in positive_words:
+            score += text_content.count(word)
+        for word in negative_words:
+            score -= text_content.count(word)
+        
+        # 归一化到 -1 ~ +1
+        total_count = len(positive_words) + len(negative_words)
+        if total_count > 0:
+            score = score / total_count
+        
+        return max(-1.0, min(1.0, score))
 
 @retry(
     stop=stop_after_attempt(3),
@@ -240,13 +267,20 @@ def fetch_fund_flow(symbol: str) -> dict:
         
     if df is None or df.empty:
         return {}
-        
-    # 获取最新一天的资金流向信息
-    latest = df.iloc[0] if getattr(df.iloc[0], 'name', None) == 0 else df.iloc[-1]
-    # 取决于接口顺序，若是倒序排首行为最新。保妥起见如果包含日期排序一下：
+    
+    # 确保按日期升序排列，取最新一行
     if '日期' in df.columns:
         df = df.sort_values(by='日期', ascending=True)
-        latest = df.iloc[-1]
-        
-    return latest.to_dict()
+    latest = df.iloc[-1]
+    
+    # 将 Series 转为标量 dict（处理可能存在的 NaN 值）
+    result = {}
+    for key, value in latest.items():
+        if isinstance(value, (pd.Timestamp, pd.Period)):
+            result[key] = str(value)
+        elif pd.isna(value):
+            result[key] = 0.0
+        else:
+            result[key] = value
+    return result
 
