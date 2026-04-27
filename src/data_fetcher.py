@@ -1,6 +1,7 @@
 import logging
 import time
 import random
+import os
 import requests
 from datetime import datetime, timedelta
 import pandas as pd
@@ -66,6 +67,9 @@ def setup_logger():
 
 setup_logger()
 
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs", "daily_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 def _clean_symbol(symbol: str) -> str:
     """
     清洗股票代码（移除 sh, sz 等前缀）
@@ -76,6 +80,56 @@ def _clean_symbol(symbol: str) -> str:
         if symbol.startswith(prefix):
             return symbol[2:]
     return symbol
+
+
+def _to_market_symbol(raw_symbol: str) -> str:
+    sym = raw_symbol.strip().lower()
+    if sym.startswith(("sh", "sz", "bj")) and len(sym) == 8:
+        return sym
+    code = _clean_symbol(sym)
+    if code.startswith(("60", "68", "90")):
+        return f"sh{code}"
+    if code.startswith(("00", "001", "002", "003", "20", "30")):
+        return f"sz{code}"
+    return f"sz{code}"
+
+
+def _cache_path_for_symbol(symbol: str) -> str:
+    market_symbol = _to_market_symbol(symbol)
+    return os.path.join(CACHE_DIR, f"{market_symbol}.csv")
+
+
+def _save_daily_cache(symbol: str, df: pd.DataFrame):
+    if df is None or df.empty:
+        return
+    try:
+        path = _cache_path_for_symbol(symbol)
+        to_save = df.copy().reset_index()
+        to_save.to_csv(path, index=False, encoding="utf-8-sig")
+    except Exception as e:
+        logger.warning(f"写入日线缓存失败: {symbol}, error={e}")
+
+
+def _load_daily_cache(symbol: str, days: int) -> pd.DataFrame:
+    path = _cache_path_for_symbol(symbol)
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        df = pd.read_csv(path)
+        required = {"date", "open", "high", "low", "close", "volume"}
+        if not required.issubset(set(df.columns)):
+            return pd.DataFrame()
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df = df.dropna(subset=["date", "open", "high", "low", "close", "volume"])
+        if df.empty:
+            return pd.DataFrame()
+        df = df.sort_values("date").set_index("date")
+        return df.tail(days)
+    except Exception as e:
+        logger.warning(f"读取日线缓存失败: {symbol}, error={e}")
+        return pd.DataFrame()
 
 @retry(
     stop=stop_after_attempt(3),
@@ -129,21 +183,54 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
         last_error = e
         logger.warning(f"主接口 stock_zh_a_hist 失败: {e}")
 
-    # 降级接口：stock_zh_a_daily (新浪数据源，海外可达性更高)
+    # 回退1：同接口切换不复权，部分股票在特定时段 qfq 可能空
+    if df is None or df.empty:
+        try:
+            df = ak.stock_zh_a_hist(
+                symbol=clean_symbol,
+                period="daily",
+                start_date=start_str,
+                end_date=end_str,
+                adjust="",
+            )
+            if df is not None and not df.empty:
+                logger.info(f"{symbol} 已通过 stock_zh_a_hist(adjust='') 回退获取到数据")
+        except Exception as e:
+            logger.warning(f"回退 stock_zh_a_hist(adjust='') 失败: {e}")
+
+    # 回退2：stock_zh_a_daily (新浪数据源，海外可达性更高)
     if (df is None or df.empty) and last_error is not None:
         logger.info(f"尝试降级接口 stock_zh_a_daily 获取 {symbol}...")
         try:
             df = ak.stock_zh_a_daily(
-                symbol=f"{'sh' if symbol.startswith('sh') or (not symbol.startswith('sz') and symbol[0] in ('6', '9')) else 'sz'}{clean_symbol}",
+                symbol=_to_market_symbol(symbol),
                 start_date=start_str,
                 end_date=end_str,
                 adjust="qfq",
             )
         except Exception as e2:
             logger.warning(f"降级接口也失败: {e2}")
-            return pd.DataFrame()
+
+    # 回退3：stock_zh_a_daily 不复权
+    if df is None or df.empty:
+        try:
+            df = ak.stock_zh_a_daily(
+                symbol=_to_market_symbol(symbol),
+                start_date=start_str,
+                end_date=end_str,
+                adjust="",
+            )
+            if df is not None and not df.empty:
+                logger.info(f"{symbol} 已通过 stock_zh_a_daily(adjust='') 回退获取到数据")
+        except Exception as e:
+            logger.warning(f"回退 stock_zh_a_daily(adjust='') 失败: {e}")
 
     if df is None or df.empty:
+        logger.warning(f"在线接口未获取到 {symbol} 数据，尝试读取本地缓存")
+        cached = _load_daily_cache(symbol, days)
+        if not cached.empty:
+            logger.info(f"{symbol} 已从本地缓存恢复 {len(cached)} 条日线数据")
+            return cached
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
         return pd.DataFrame()
         
@@ -198,6 +285,9 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     # 截取最近的 N 个交易日数据
     result_df = df.tail(days)
     logger.info(f"已截取最近 {len(result_df)} 个交易日的数据")
+
+    # 成功获取后写入缓存，供网络波动时兜底
+    _save_daily_cache(symbol, result_df)
     
     return result_df
 
