@@ -62,101 +62,200 @@ def inject_custom_styles() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;800&display=swap');
 
         :root {
-            --bg-soft: #f3f8f7;
-            --card: #ffffff;
-            --brand: #006c67;
-            --brand-soft: #d6f0eb;
-            --accent: #f55d3e;
-            --text-main: #102a43;
-            --text-sub: #486581;
+            --bg-base: #0c0d14;          /* TradingView extremely dark background */
+            --bg-card: #131722;          /* TradingView primary card background */
+            --bg-card-hover: #1e222d;    /* TradingView active/hover card */
+            --border-color: #2a2e39;     /* Thin TradingView grid border */
+            --brand-blue: #2962ff;       /* TradingView signature neon blue */
+            --positive-green: #00c076;   /* TradingView premium green */
+            --negative-red: #ff3b30;     /* TradingView premium red */
+            --text-main: #d1d4dc;        /* High contrast text */
+            --text-sub: #787b86;         /* Low contrast text */
         }
 
-        html, body, [data-testid="stAppViewContainer"] {
-            font-family: 'Noto Sans SC', sans-serif;
-            color: var(--text-main);
-            background:
-                radial-gradient(circle at 10% 10%, #fef4ea 0%, rgba(254, 244, 234, 0) 36%),
-                radial-gradient(circle at 90% 0%, #d9f5ef 0%, rgba(217, 245, 239, 0) 40%),
-                linear-gradient(170deg, #f5fbfa 0%, #eef6f7 100%);
+        html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+            font-family: 'Outfit', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-base) !important;
+            color: var(--text-main) !important;
         }
 
+        /* Sidebar styling override to look like TradingView sidebar */
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #12343b 0%, #1f4a52 100%);
+            background-color: #131722 !important;
+            border-right: 1px solid var(--border-color) !important;
         }
 
-        [data-testid="stSidebar"] h1,
-        [data-testid="stSidebar"] h2,
-        [data-testid="stSidebar"] h3,
         [data-testid="stSidebar"] label,
         [data-testid="stSidebar"] p,
         [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] small,
         [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] {
-            color: #f5fffc;
+            color: var(--text-main) !important;
         }
 
-        /* 修复侧边栏输入框白字白底问题 */
-        [data-testid="stSidebar"] textarea,
-        [data-testid="stSidebar"] input,
-        [data-testid="stSidebar"] [data-baseweb="input"] input,
-        [data-testid="stSidebar"] [data-baseweb="textarea"] textarea,
-        [data-testid="stSidebar"] [data-baseweb="select"] input {
-            color: #102a43 !important;
-            -webkit-text-fill-color: #102a43 !important;
-            background: #ffffff !important;
+        /* Custom Input elements styling to look like TradingView dark inputs */
+        input, select, textarea, [data-baseweb="input"] input, [data-baseweb="select"] div {
+            background-color: #1c2030 !important;
+            color: var(--text-main) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 6px !important;
         }
 
-        [data-testid="stSidebar"] textarea::placeholder,
-        [data-testid="stSidebar"] input::placeholder {
-            color: #7c8aa0 !important;
-            -webkit-text-fill-color: #7c8aa0 !important;
-            opacity: 1;
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--brand-blue) !important;
+            box-shadow: 0 0 0 2px rgba(41, 98, 255, 0.2) !important;
         }
 
-        [data-testid="stMetric"] {
-            background: var(--card);
-            border: 1px solid #d9e2ec;
-            border-radius: 14px;
-            padding: 12px 14px;
-            box-shadow: 0 10px 22px rgba(16, 42, 67, 0.08);
-        }
-
+        /* Hero Panel TradingView Styling */
         .hero-panel {
-            background: linear-gradient(110deg, #0b3c49 0%, #006c67 48%, #3aa17e 100%);
-            border-radius: 18px;
-            padding: 20px 22px;
-            margin-bottom: 12px;
-            color: #f5fffc;
-            box-shadow: 0 16px 40px rgba(16, 42, 67, 0.18);
+            background: linear-gradient(135deg, #131722 0%, #1e222d 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-panel::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background-color: var(--brand-blue);
         }
 
         .hero-title {
             margin: 0;
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 28px;
-            font-weight: 700;
-            letter-spacing: 0.4px;
+            font-size: 32px;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: -0.5px;
         }
 
         .hero-sub {
-            margin: 6px 0 0;
-            color: #ddfff4;
+            margin: 8px 0 0;
+            color: var(--text-sub);
             font-size: 14px;
         }
 
         .tag-chip {
             display: inline-block;
-            margin-top: 8px;
-            background: rgba(255, 255, 255, 0.18);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            border-radius: 999px;
-            padding: 3px 12px;
-            font-size: 12px;
+            margin-top: 12px;
+            background: rgba(41, 98, 255, 0.15);
+            border: 1px solid rgba(41, 98, 255, 0.3);
+            color: #4fc3f7;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Premium TradingView Ticker Cards */
+        .tv-ticker-card {
+            background: #131722;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.25s ease-in-out;
+            flex: 1;
+            min-width: 220px;
+        }
+
+        .tv-ticker-card:hover {
+            border-color: #363c4e;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+        }
+
+        .tv-ticker-label {
+            font-size: 11px;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
             font-weight: 700;
-            letter-spacing: 0.2px;
+            margin-bottom: 6px;
+        }
+
+        .tv-ticker-val {
+            font-size: 26px;
+            font-weight: 700;
+            color: #ffffff;
+            font-family: 'Fira Code', 'Noto Sans SC', monospace;
+        }
+
+        .tv-ticker-sub {
+            font-size: 11px;
+            color: var(--text-sub);
+            margin-top: 6px;
+        }
+
+        /* Tabs custom override */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 12px;
+            background-color: #131722;
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 10px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            color: var(--text-sub) !important;
+            background-color: transparent !important;
+            font-weight: 600 !important;
+            padding: 12px 16px !important;
+            transition: all 0.2s !important;
+        }
+
+        .stTabs [data-baseweb="tab"]:hover {
+            color: #ffffff !important;
+        }
+
+        .stTabs [aria-selected="true"] {
+            color: var(--brand-blue) !important;
+            border-bottom: 2px solid var(--brand-blue) !important;
+        }
+
+        /* Table custom styling for dark mode */
+        div[data-testid="stTable"] table {
+            background-color: #131722 !important;
+            color: var(--text-main) !important;
+            border-collapse: collapse !important;
+        }
+
+        div[data-testid="stTable"] th {
+            background-color: #1c2030 !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+        }
+
+        div[data-testid="stTable"] td {
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+
+        /* Buttons custom styling to look like TradingView primary and secondary buttons */
+        button[kind="primary"] {
+            background-color: var(--brand-blue) !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 6px !important;
+            font-weight: 700 !important;
+            padding: 8px 16px !important;
+            box-shadow: 0 4px 12px rgba(41, 98, 255, 0.3) !important;
+            transition: all 0.2s !important;
+        }
+
+        button[kind="primary"]:hover {
+            background-color: #1e52d6 !important;
+            transform: translateY(-1px) !important;
+            box-shadow: 0 6px 16px rgba(41, 98, 255, 0.4) !important;
         }
         </style>
         """,
@@ -202,11 +301,181 @@ def render_price_charts(raw_data_cache: dict[str, pd.DataFrame]) -> None:
         st.warning("清洗后没有可用数据点，无法绘图。")
         return
 
-    st.line_chart(plot_df.set_index(date_col)[close_col], height=320)
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=plot_df[date_col],
+        y=plot_df[close_col],
+        mode="lines",
+        name="收盘价",
+        line=dict(color="#2962ff", width=2),
+        fill="tozeroy",
+        fillcolor="rgba(41, 98, 255, 0.08)"
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Outfit, Noto Sans SC, sans-serif", color="#d1d4dc"),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=320,
+        showlegend=False
+    )
+    fig.update_xaxes(
+        gridcolor="#2a2e39", 
+        linecolor="#2a2e39",
+        tickfont=dict(color="#787b86")
+    )
+    fig.update_yaxes(
+        gridcolor="#2a2e39", 
+        linecolor="#2a2e39",
+        tickfont=dict(color="#787b86")
+    )
+    st.plotly_chart(fig, use_container_width=True)
     latest_close = float(plot_df[close_col].iloc[-1])
     first_close = float(plot_df[close_col].iloc[0])
     pct_move = ((latest_close - first_close) / first_close * 100.0) if first_close else 0.0
     st.caption(f"{chart_symbol} 期间累计涨跌幅: {pct_move:+.2f}%")
+
+
+def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, selected_symbols: list[str]) -> None:
+    """
+    【智能投顾与新手诊断模块】对标 TradingView Advisor，将高深的回测指标翻译成小白通俗易懂的白话诊断与操盘建议。
+    """
+    st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title" style="color: #2962ff; font-size: 20px; font-weight: 700; margin-bottom: 16px;">🎓 小白策略自诊断与智能投资建议 (TradingView Advisor)</div>', unsafe_allow_html=True)
+
+    portfolio = summary_df[summary_df["symbol"] == "PORTFOLIO"]
+    if portfolio.empty:
+        portfolio = summary_df.head(1)
+    
+    if portfolio.empty:
+        st.info("无法加载组合收益数据，暂无法生成智能投资建议。")
+        return
+        
+    stats = portfolio.iloc[0]
+    
+    # 提取关键回测数值
+    cum_ret = float(stats.get("cumulative_return", 0.0))
+    sharpe = float(stats.get("sharpe", 0.0))
+    mdd = abs(float(stats.get("max_drawdown", 0.0)))
+    excess_ret = float(stats.get("excess_return", 0.0))
+    trades = int(stats.get("trades", 0))
+    hit_rate = float(stats.get("hit_rate", 0.5))
+    
+    # 1. 策略星级综合评定 (Beginner Strategy Star Rating)
+    stars = 2.0
+    # 依据夏普比率加星
+    if sharpe >= 1.5:
+        stars += 1.5
+    elif sharpe >= 0.8:
+        stars += 1.0
+    elif sharpe >= 0.3:
+        stars += 0.5
+    elif sharpe < 0.0:
+        stars -= 1.0
+        
+    # 依据最大回撤加星/减星
+    if mdd < 0.10:
+        stars += 1.0
+    elif mdd >= 0.10 and mdd < 0.20:
+        stars += 0.5
+    elif mdd >= 0.30:
+        stars -= 1.0
+        
+    # 依据胜率与超额收益加星
+    if hit_rate >= 0.58:
+        stars += 0.5
+    if excess_ret > 0.0:
+        stars += 0.5
+        
+    stars = max(1.0, min(5.0, stars))
+    
+    # 星级图标渲染
+    star_str = "★" * int(stars) + ("☆" if (stars - int(stars) >= 0.5) else "")
+    star_str = star_str.ljust(5, "☆")
+    
+    # 诊断等级与星级卡片样式
+    if stars >= 4.0:
+        badge_color = "#00c076"
+        badge_text = "极佳 / 强烈推荐模拟"
+        border_shadow = "rgba(0, 192, 118, 0.2)"
+    elif stars >= 3.0:
+        badge_color = "#2962ff"
+        badge_text = "稳健 / 建议轻仓试水"
+        border_shadow = "rgba(41, 98, 255, 0.2)"
+    else:
+        badge_color = "#ff3b30"
+        badge_text = "高危 / 需优化后观察"
+        border_shadow = "rgba(255, 59, 48, 0.2)"
+
+    st.markdown(
+        f"""
+        <div style="background: #131722; border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 8px 32px {border_shadow}; margin-bottom: 24px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px;">
+                <div>
+                    <span style="font-size: 12px; color: var(--text-sub); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">策略评级 (Beginner Score)</span>
+                    <span style="font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">诊断结论：{badge_text}</span>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 24px; color: {badge_color}; font-weight: 800; font-family: monospace;">{star_str}</div>
+                    <div style="font-size: 11px; color: var(--text-sub); margin-top: 4px;">综合星级: {stars:.1f} / 5.0</div>
+                </div>
+            </div>
+            
+            <h4 style="color: #ffffff; margin-top: 0; margin-bottom: 12px; font-size: 16px; font-weight: 700;">🎯 白话核心指标解读 (Layman's Metrics)</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">💰 赚钱能力 (本金增值度)</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: { '#00c076' if cum_ret >= 0 else '#ff3b30' };">{cum_ret:+.2%}</div>
+                    <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
+                        <b>新手解读</b>：回测期间，如果投入 <b>10,000元</b> 本金，你的资产将增值到 <b>{10000 * (1 + cum_ret):,.2f}元</b>。
+                        { "表现极强，收益大幅跑赢绝大多数理财产品！" if cum_ret > 0.15 else "收益较为温和，起到了一定的增值效果。" if cum_ret > 0 else "目前本金正处于缩水状态，亏损容易让小白心态失衡，千万别实盘！" }
+                    </p>
+                </div>
+                <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">💎 稳健性价比 (持仓焦虑度)</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: #2962ff;">{sharpe:.2f} (夏普比率)</div>
+                    <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
+                        <b>新手解读</b>：这是衡量“性价比”的指标。
+                        { "<b>极高（超稳健）</b>：策略收益远超其波动风险，持仓期间心电图极其平稳，几乎没有持仓焦虑，极度适合新手。" if sharpe >= 1.5 else
+                          "<b>良好（稳健）</b>：波动在正常股市范围内，收益产出性价比好，新手正常心态即可拿住。" if sharpe >= 0.8 else
+                          "<b>中等（有持仓焦虑）</b>：虽然赚钱但一波三折，持仓过程可能让你经常焦虑失眠，需要一定的持仓耐心。" if sharpe >= 0.3 else
+                          "<b>极低（极易焦虑割肉）</b>：性价比较低，上下震荡风险过大，新手持仓极易在波动中由于恐惧而割肉离场。" }
+                    </p>
+                </div>
+                <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">📉 最惨历史浮亏 (最大心理承受)</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: #ff3b30;">-{mdd:.2%} (最大回撤)</div>
+                    <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
+                        <b>新手解读</b>：代表如果你极其不幸买在了<b>最高点</b>，到跌到最低点时账户可能会面临的最大<b>浮动亏损</b>。
+                        { "<b>极佳（回撤极小）</b>：浮亏在10%以内，属于极低波动策略，持仓安全感十足，最适合小白。" if mdd < 0.10 else
+                          "<b>适中（正常回撤）</b>：浮亏在20%以内，属于正常大盘波动范畴，需要做好本金暂时浮亏的心理准备。" if mdd < 0.20 else
+                          "<b>偏高（需要心脏大）</b>：浮亏超20%，新手容易在浮亏探底时惊慌失措进而割肉，切勿盲目满仓！" if mdd < 0.30 else
+                          "<b>高风险（极易恐慌）</b>：浮亏超30%！这极考验神经。新手切勿重仓，策略急需通过参数调优降低最大回撤！" }
+                    </p>
+                </div>
+            </div>
+
+            <h4 style="color: #ffffff; margin-top: 0; margin-bottom: 12px; font-size: 16px; font-weight: 700;">💡 新手操盘实盘指南 (Advisor Tips)</h4>
+            <div style="background: rgba(41, 98, 255, 0.08); border-left: 4px solid var(--brand-blue); padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+                <p style="font-size: 13px; color: #ffffff; margin: 0 0 8px 0; font-weight: 700;">📌 资金与仓位分配动作建议：</p>
+                <p style="font-size: 13px; color: var(--text-main); margin: 0; line-height: 1.6;">
+                    { "<b>【✅ 适合实盘轻仓配置】</b>：该策略历史表现极为稳健，夏普比率优秀且回撤极低。新手可考虑用总资金的 <b>5% - 10%</b> 进行初期实盘轻仓探索，注意防范AkShare网络限流引起的信号漂移。" if (mdd < 0.15 and sharpe >= 1.0) else
+                      "<b>【⚠️ 建议观望/分批建仓】</b>：该策略具备一定的盈利能力，但历史浮亏（最大回撤）不容忽视。切忌一把梭哈！建议采用<b>分批定投或金字塔建仓</b>（如 3:3:4 比例分批买入）以平摊持仓成本，每只个股分配仓位不超过 10%。" if (mdd < 0.25 and sharpe >= 0.5) else
+                      "<b>【🚫 严禁小白实盘交易】</b>：策略历史回撤极大（超过25%）或夏普性价比偏低。当前盲目实盘极易沦为韭菜。建议使用下方的<b>‘参数网格搜索’</b>功能进行多维度搜索调优，直至夏普比率拉升、最大回撤压降到可接受的水平后再作考虑。" }
+                </p>
+            </div>
+
+            <h4 style="color: #ffffff; margin-top: 0; margin-bottom: 12px; font-size: 15px; font-weight: 700;">🚨 小白量化风控三大警戒线 (Hard Rules)</h4>
+            <ul style="font-size: 12px; color: var(--text-main); margin: 0; padding-left: 20px; line-height: 1.8;">
+                <li><b>一票否决止损线</b>：单只股票买入后，若跌破个股买入价的 <b>-7% - 8%</b>，必须执行钢铁止损，防止小套变深套，坚决不参与长周期死扛。</li>
+                <li><b>严禁小白加杠杆</b>：在策略没有获得连续 3 个季度平稳盈利流水前，<b>坚决不要融券或使用借贷资金</b>，量化回测的风险往往隐藏在黑天鹅尾部中。</li>
+                <li><b>策略信号钢铁纪律</b>：量化交易的核心是战胜人性的贪婪与恐惧。一旦系统计算出<b>仓位减仓或清仓警告信号</b>，不可抱有“明天可能会反弹”的幻想，必须严格执行。</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 def render_detailed_analysis(monitor_results: list[dict], financial_data_cache: dict = None) -> None:
@@ -359,26 +628,26 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
 
     st.markdown(
         f"""
-        <div style="display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📈 组合累计收益</div>
-                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('cumulative_return', 0.0)):.2%}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">回测区间总收益率</div>
+        <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; width: 100%;">
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">📈 组合累计收益</div>
+                <div class="tv-ticker-val" style="color: { '#00c076' if float(latest.get('cumulative_return', 0.0)) >= 0 else '#ff3b30' };">{float(latest.get('cumulative_return', 0.0)):+.2%}</div>
+                <div class="tv-ticker-sub">回测区间总收益率</div>
             </div>
-            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">💎 组合夏普比率</div>
-                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('sharpe', 0.0)):.2f}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">风险调整后收益</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">💎 组合夏普比率</div>
+                <div class="tv-ticker-val" style="color: #2962ff;">{float(latest.get('sharpe', 0.0)):.2f}</div>
+                <div class="tv-ticker-sub">风险调整后收益比率</div>
             </div>
-            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📉 最大回撤</div>
-                <div style="font-size: 28px; font-weight: 800; color: #f55d3e;">{float(latest.get('max_drawdown', 0.0)):.2%}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">下行风险极值</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">📉 最大回撤</div>
+                <div class="tv-ticker-val" style="color: #ff3b30;">{float(latest.get('max_drawdown', 0.0)):.2%}</div>
+                <div class="tv-ticker-sub">历史最大浮亏极值</div>
             </div>
-            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">⚡ 组合超额收益</div>
-                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('excess_return', 0.0)):.2%}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">相较于基准指数的超额</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">⚡ 组合超额收益</div>
+                <div class="tv-ticker-val" style="color: { '#00c076' if float(latest.get('excess_return', 0.0)) >= 0 else '#ff3b30' };">{float(latest.get('excess_return', 0.0)):+.2%}</div>
+                <div class="tv-ticker-sub">相较于基准指数的超额</div>
             </div>
         </div>
         """,
@@ -439,16 +708,19 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
         fig_dd.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family="Noto Sans SC, sans-serif", color="#102a43"),
+            font=dict(family="Outfit, Noto Sans SC, sans-serif", color="#d1d4dc"),
             yaxis=dict(tickformat=".2%"),
-            margin=dict(l=20, r=20, t=30, b=20),
+            margin=dict(l=10, r=10, t=10, b=10),
             height=340,
             showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#d1d4dc"))
         )
-        fig_dd.update_xaxes(gridcolor="rgba(16,42,67,0.05)", linecolor="rgba(16,42,67,0.1)")
-        fig_dd.update_yaxes(gridcolor="rgba(16,42,67,0.05)", linecolor="rgba(16,42,67,0.1)")
+        fig_dd.update_xaxes(gridcolor="#2a2e39", linecolor="#2a2e39", tickfont=dict(color="#787b86"))
+        fig_dd.update_yaxes(gridcolor="#2a2e39", linecolor="#2a2e39", tickfont=dict(color="#787b86"))
         st.plotly_chart(fig_dd, use_container_width=True)
+        
+        # 渲染小白量化投资建议
+        render_beginner_advisor(summary_df, detail_df, selected_symbols)
 
     st.markdown("---")
     st.markdown("### 🔧 参数网格搜索（Top-N）")
@@ -958,26 +1230,26 @@ def main() -> None:
 
     st.markdown(
         f"""
-        <div style="display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📰 市场情绪得分</div>
-                <div style="font-size: 28px; font-weight: 800; color: { '#006c67' if avg_sentiment >= 0 else '#f55d3e' };">{avg_sentiment}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">近期新闻舆情偏向度</div>
+        <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; width: 100%;">
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">📰 市场情绪得分</div>
+                <div class="tv-ticker-val" style="color: { '#00c076' if avg_sentiment >= 0 else '#ff3b30' };">{avg_sentiment:+.2f}</div>
+                <div class="tv-ticker-sub">近期新闻舆情偏向度</div>
             </div>
-            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">🔥 领涨板块</div>
-                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{top_sector_name}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">今日最强势板块 (涨幅: <b style="color: #006c67;">{top_sector_delta}</b>)</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">🔥 领涨板块</div>
+                <div class="tv-ticker-val" style="color: #00c076; font-size: 22px;">{top_sector_name}</div>
+                <div class="tv-ticker-sub">今日最强势板块 (今日涨幅: <b style="color: #00c076;">{top_sector_delta}</b>)</div>
             </div>
-            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">💰 主力净流入</div>
-                <div style="font-size: 28px; font-weight: 800; color: { '#006c67' if total_fund_net >= 0 else '#f55d3e' };">{total_fund_net:,.0f} 万元</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">个股主力资金加总流入额</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">💰 主力资金流入</div>
+                <div class="tv-ticker-val" style="color: { '#00c076' if total_fund_net >= 0 else '#ff3b30' };">{total_fund_net:,.0f} 万元</div>
+                <div class="tv-ticker-sub">个股主力资金加总流入额</div>
             </div>
-            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
-                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">⚠️ 风控预警数量</div>
-                <div style="font-size: 28px; font-weight: 800; color: { '#f55d3e' if len(alerts) > 0 else '#006c67' };">{len(alerts)}</div>
-                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">触发风控预警规则的个股数</div>
+            <div class="tv-ticker-card">
+                <div class="tv-ticker-label">⚠️ 风控预警数量</div>
+                <div class="tv-ticker-val" style="color: { '#ff3b30' if len(alerts) > 0 else '#00c076' };">{len(alerts)}</div>
+                <div class="tv-ticker-sub">触发风控预警规则的个股数</div>
             </div>
         </div>
         """,
