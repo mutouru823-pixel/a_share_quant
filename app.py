@@ -357,11 +357,33 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
         portfolio = summary_df.head(1)
     latest = portfolio.iloc[0]
 
-    metric_a, metric_b, metric_c, metric_d = st.columns(4)
-    metric_a.metric("组合累计收益", f"{float(latest.get('cumulative_return', 0.0)):.2%}")
-    metric_b.metric("组合夏普", f"{float(latest.get('sharpe', 0.0)):.2f}")
-    metric_c.metric("最大回撤", f"{float(latest.get('max_drawdown', 0.0)):.2%}")
-    metric_d.metric("超额收益", f"{float(latest.get('excess_return', 0.0)):.2%}")
+    st.markdown(
+        f"""
+        <div style="display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📈 组合累计收益</div>
+                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('cumulative_return', 0.0)):.2%}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">回测区间总收益率</div>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">💎 组合夏普比率</div>
+                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('sharpe', 0.0)):.2f}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">风险调整后收益</div>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📉 最大回撤</div>
+                <div style="font-size: 28px; font-weight: 800; color: #f55d3e;">{float(latest.get('max_drawdown', 0.0)):.2%}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">下行风险极值</div>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">⚡ 组合超额收益</div>
+                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{float(latest.get('excess_return', 0.0)):.2%}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">相较于基准指数的超额</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     if detail_df is None or not isinstance(detail_df, pd.DataFrame) or detail_df.empty:
         return
@@ -379,8 +401,54 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
         bench_daily = plot_df.groupby("date", as_index=True)["benchmark_return"].mean().sort_index().fillna(0.0)
         equity_df["benchmark"] = (1 + bench_daily).cumprod()
 
-    st.markdown("### 📊 策略与基准权益曲线")
-    st.line_chart(equity_df, height=340)
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.markdown("### 📊 策略与基准权益曲线")
+        st.line_chart(equity_df, height=340)
+        
+    with col_chart2:
+        st.markdown("### 📉 策略与基准历史动态回撤 (Underwater)")
+        # Calculate drawdown
+        strategy_peak = equity_df["strategy"].cummax()
+        equity_df["strategy_drawdown"] = (equity_df["strategy"] / strategy_peak - 1.0)
+        
+        import plotly.graph_objects as go
+        fig_dd = go.Figure()
+        fig_dd.add_trace(go.Scatter(
+            x=equity_df.index,
+            y=equity_df["strategy_drawdown"],
+            mode="lines",
+            name="策略回撤",
+            line=dict(color="#f55d3e", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(245, 93, 62, 0.15)"
+        ))
+        if "benchmark" in equity_df.columns:
+            benchmark_peak = equity_df["benchmark"].cummax()
+            equity_df["benchmark_drawdown"] = (equity_df["benchmark"] / benchmark_peak - 1.0)
+            fig_dd.add_trace(go.Scatter(
+                x=equity_df.index,
+                y=equity_df["benchmark_drawdown"],
+                mode="lines",
+                name="基准回撤",
+                line=dict(color="#486581", width=1.5, dash="dash"),
+                fill="tozeroy",
+                fillcolor="rgba(72, 101, 129, 0.05)"
+            ))
+            
+        fig_dd.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Noto Sans SC, sans-serif", color="#102a43"),
+            yaxis=dict(tickformat=".2%"),
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=340,
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        fig_dd.update_xaxes(gridcolor="rgba(16,42,67,0.05)", linecolor="rgba(16,42,67,0.1)")
+        fig_dd.update_yaxes(gridcolor="rgba(16,42,67,0.05)", linecolor="rgba(16,42,67,0.1)")
+        st.plotly_chart(fig_dd, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### 🔧 参数网格搜索（Top-N）")
@@ -888,11 +956,33 @@ def main() -> None:
     else:
         top_sector_delta = "N/A"
 
-    metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
-    metric_col_1.metric("市场情绪得分", avg_sentiment)
-    metric_col_2.metric("领涨板块", top_sector_name, delta=top_sector_delta)
-    metric_col_3.metric("主力净流入(万元)", f"{total_fund_net:,.0f}")
-    metric_col_4.metric("预警数量", len(alerts))
+    st.markdown(
+        f"""
+        <div style="display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">📰 市场情绪得分</div>
+                <div style="font-size: 28px; font-weight: 800; color: { '#006c67' if avg_sentiment >= 0 else '#f55d3e' };">{avg_sentiment}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">近期新闻舆情偏向度</div>
+            </div>
+            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">🔥 领涨板块</div>
+                <div style="font-size: 28px; font-weight: 800; color: #006c67;">{top_sector_name}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">今日最强势板块 (涨幅: <b style="color: #006c67;">{top_sector_delta}</b>)</div>
+            </div>
+            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">💰 主力净流入</div>
+                <div style="font-size: 28px; font-weight: 800; color: { '#006c67' if total_fund_net >= 0 else '#f55d3e' };">{total_fund_net:,.0f} 万元</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">个股主力资金加总流入额</div>
+            </div>
+            <div style="flex: 1; min-width: 220px; background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: 1px solid rgba(0, 108, 103, 0.15); box-shadow: 0 8px 30px rgba(16, 42, 67, 0.05); transition: all 0.3s;">
+                <div style="font-size: 12px; color: #486581; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-weight: 600;">⚠️ 风控预警数量</div>
+                <div style="font-size: 28px; font-weight: 800; color: { '#f55d3e' if len(alerts) > 0 else '#006c67' };">{len(alerts)}</div>
+                <div style="font-size: 11px; color: #7c8aa0; margin-top: 4px;">触发风控预警规则的个股数</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     overview_tab, chart_tab, table_tab, detail_tab, backtest_tab = st.tabs(["市场总览", "趋势图表", "策略明细", "详细分析", "回测分析"])
 

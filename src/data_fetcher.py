@@ -1,14 +1,11 @@
 import logging
 import time
 import random
-import os
 import requests
 from datetime import datetime, timedelta
 import pandas as pd
 import akshare as ak
 from tenacity import retry, wait_fixed, stop_after_attempt, retry_if_exception_type
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 # 随机User-Agent列表，防止被封锁
 USER_AGENTS = [
@@ -19,40 +16,14 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0"
 ]
 
-# 全局替换 requests.Session.request 以注入 random User-Agent 和超时
+# 全局替换 requests.Session.request 以注入 random User-Agent 彻底解决 RemoteDisconnected 错误
 _original_request = requests.Session.request
-
 def _mocked_request(self, method, url, **kwargs):
-    # 注入 User-Agent（不覆盖已有值）
-    if 'headers' not in kwargs or kwargs['headers'] is None:
-        kwargs['headers'] = {}
-    if 'User-Agent' not in kwargs['headers']:
-        kwargs['headers']['User-Agent'] = random.choice(USER_AGENTS)
-    # 强制设置超时（AkShare 部分接口默认无超时，在海外网络易卡死）
-    if 'timeout' not in kwargs:
-        kwargs['timeout'] = (15, 60)  # (connect_timeout, read_timeout)
+    headers = kwargs.get('headers', {})
+    headers['User-Agent'] = random.choice(USER_AGENTS)
+    kwargs['headers'] = headers
     return _original_request(self, method, url, **kwargs)
-
 requests.Session.request = _mocked_request
-
-# 为所有 requests.Session 添加 urllib3 级别重试适配器（处理 DNS/连接层错误）
-_original_requests_session_init = requests.Session.__init__
-
-
-def _patched_session_init(self, *args, **kwargs):
-    _original_requests_session_init(self, *args, **kwargs)
-    retry_strategy = Retry(
-        total=2,
-        backoff_factor=0.5,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST"],
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    self.mount("https://", adapter)
-    self.mount("http://", adapter)
-
-
-requests.Session.__init__ = _patched_session_init
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +38,6 @@ def setup_logger():
 
 setup_logger()
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs", "daily_cache")
-os.makedirs(CACHE_DIR, exist_ok=True)
-
 def _clean_symbol(symbol: str) -> str:
     """
     清洗股票代码（移除 sh, sz 等前缀）
@@ -81,62 +49,13 @@ def _clean_symbol(symbol: str) -> str:
             return symbol[2:]
     return symbol
 
-
-def _to_market_symbol(raw_symbol: str) -> str:
-    sym = raw_symbol.strip().lower()
-    if sym.startswith(("sh", "sz", "bj")) and len(sym) == 8:
-        return sym
-    code = _clean_symbol(sym)
-    if code.startswith(("60", "68", "90")):
-        return f"sh{code}"
-    if code.startswith(("00", "001", "002", "003", "20", "30")):
-        return f"sz{code}"
-    return f"sz{code}"
-
-
-def _cache_path_for_symbol(symbol: str) -> str:
-    market_symbol = _to_market_symbol(symbol)
-    return os.path.join(CACHE_DIR, f"{market_symbol}.csv")
-
-
-def _save_daily_cache(symbol: str, df: pd.DataFrame):
-    if df is None or df.empty:
-        return
-    try:
-        path = _cache_path_for_symbol(symbol)
-        to_save = df.copy().reset_index()
-        to_save.to_csv(path, index=False, encoding="utf-8-sig")
-    except Exception as e:
-        logger.warning(f"写入日线缓存失败: {symbol}, error={e}")
-
-
-def _load_daily_cache(symbol: str, days: int) -> pd.DataFrame:
-    path = _cache_path_for_symbol(symbol)
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    try:
-        df = pd.read_csv(path)
-        required = {"date", "open", "high", "low", "close", "volume"}
-        if not required.issubset(set(df.columns)):
-            return pd.DataFrame()
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-        for col in ["open", "high", "low", "close", "volume"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.dropna(subset=["date", "open", "high", "low", "close", "volume"])
-        if df.empty:
-            return pd.DataFrame()
-        df = df.sort_values("date").set_index("date")
-        return df.tail(days)
-    except Exception as e:
-        logger.warning(f"读取日线缓存失败: {symbol}, error={e}")
-        return pd.DataFrame()
-
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_fixed(20),
     retry=retry_if_exception_type(Exception),
-    retry_error_callback=lambda retry_state: pd.DataFrame(),
-    before_sleep=lambda retry_state: logger.warning(f"获取日线数据失败，等待20s后第 {retry_state.attempt_number} 次重试...")
+    before_sleep=lambda retry_state: logger.warning(
+        f"获取数据失败，正在进行第 {retry_state.attempt_number} 次重试..."
+    )
 )
 def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     """
@@ -167,75 +86,21 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     logger.info(f"防封锁机制：随机休眠 {sleep_time:.2f} 秒...")
     time.sleep(sleep_time)
     
-    df = None
-    last_error = None
-
-    # 主接口：stock_zh_a_hist (东方财富数据源)
-    try:
-        df = ak.stock_zh_a_hist(
-            symbol=clean_symbol,
-            period="daily",
-            start_date=start_str,
-            end_date=end_str,
-            adjust="qfq",
-        )
-    except Exception as e:
-        last_error = e
-        logger.warning(f"主接口 stock_zh_a_hist 失败: {e}")
-
-    # 回退1：同接口切换不复权，部分股票在特定时段 qfq 可能空
+    # 获取 A 股日线数据（qfq：前复权）
+    df = ak.stock_zh_a_hist(
+        symbol=clean_symbol, 
+        period="daily", 
+        start_date=start_str, 
+        end_date=end_str, 
+        adjust="qfq"
+    )
+    
     if df is None or df.empty:
-        try:
-            df = ak.stock_zh_a_hist(
-                symbol=clean_symbol,
-                period="daily",
-                start_date=start_str,
-                end_date=end_str,
-                adjust="",
-            )
-            if df is not None and not df.empty:
-                logger.info(f"{symbol} 已通过 stock_zh_a_hist(adjust='') 回退获取到数据")
-        except Exception as e:
-            logger.warning(f"回退 stock_zh_a_hist(adjust='') 失败: {e}")
-
-    # 回退2：stock_zh_a_daily (新浪数据源，海外可达性更高)
-    if (df is None or df.empty) and last_error is not None:
-        logger.info(f"尝试降级接口 stock_zh_a_daily 获取 {symbol}...")
-        try:
-            df = ak.stock_zh_a_daily(
-                symbol=_to_market_symbol(symbol),
-                start_date=start_str,
-                end_date=end_str,
-                adjust="qfq",
-            )
-        except Exception as e2:
-            logger.warning(f"降级接口也失败: {e2}")
-
-    # 回退3：stock_zh_a_daily 不复权
-    if df is None or df.empty:
-        try:
-            df = ak.stock_zh_a_daily(
-                symbol=_to_market_symbol(symbol),
-                start_date=start_str,
-                end_date=end_str,
-                adjust="",
-            )
-            if df is not None and not df.empty:
-                logger.info(f"{symbol} 已通过 stock_zh_a_daily(adjust='') 回退获取到数据")
-        except Exception as e:
-            logger.warning(f"回退 stock_zh_a_daily(adjust='') 失败: {e}")
-
-    if df is None or df.empty:
-        logger.warning(f"在线接口未获取到 {symbol} 数据，尝试读取本地缓存")
-        cached = _load_daily_cache(symbol, days)
-        if not cached.empty:
-            logger.info(f"{symbol} 已从本地缓存恢复 {len(cached)} 条日线数据")
-            return cached
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
         return pd.DataFrame()
         
-    # AkShare 可能返回中文字段（stock_zh_a_hist）或英文字段（stock_zh_a_daily）
-    cn_mapping = {
+    # AkShare 默认返回的中文列名：日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
+    column_mapping = {
         '日期': 'date',
         '开盘': 'open',
         '最高': 'high',
@@ -243,22 +108,12 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
         '收盘': 'close',
         '成交量': 'volume'
     }
-    en_mapping = {
-        'date': 'date',
-        'open': 'open',
-        'high': 'high',
-        'low': 'low',
-        'close': 'close',
-        'volume': 'volume'
-    }
-
-    if all(col in df.columns for col in cn_mapping.keys()):
-        column_mapping = cn_mapping
-    elif all(col in df.columns for col in en_mapping.keys()):
-        column_mapping = en_mapping
-    else:
-        logger.error(f"AkShare 响应格式不符合预期，当前字段: {list(df.columns)}")
-        return pd.DataFrame()
+    
+    # 检查期望的列是否存在
+    missing_cols = [col for col in column_mapping.keys() if col not in df.columns]
+    if missing_cols:
+        logger.error(f"AkShare 响应的格式不符合预期，缺少列：{missing_cols}")
+        raise ValueError(f"返回数据缺少必要字段: {missing_cols}")
         
     # 重命名列
     df = df.rename(columns=column_mapping)
@@ -285,9 +140,6 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     # 截取最近的 N 个交易日数据
     result_df = df.tail(days)
     logger.info(f"已截取最近 {len(result_df)} 个交易日的数据")
-
-    # 成功获取后写入缓存，供网络波动时兜底
-    _save_daily_cache(symbol, result_df)
     
     return result_df
 
@@ -304,36 +156,37 @@ def fetch_realtime_data(symbol: str) -> pd.DataFrame:
     df = ak.stock_individual_info_em(symbol=clean_sym)
     return df
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(20),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
+)
 def fetch_top_sectors(n: int = 5) -> list:
-    """获取今日涨幅前几名的板块（非关键数据，失败不影响主流程）"""
+    """获取今日涨幅前几名的板块"""
     logger.info(f"获取今日涨幅前 {n} 的板块...")
-    try:
-        df = ak.stock_board_industry_name_em()
-        if df is not None and not df.empty:
-            # 按涨跌幅排序降序
-            df = df.sort_values(by="涨跌幅", ascending=False)
-            top_n = df.head(n)
-            return top_n.to_dict('records')
-    except Exception as e:
-        logger.warning(f"获取板块数据失败（非关键步骤，跳过）: {e}")
+    df = ak.stock_board_industry_name_em()
+    if df is not None and not df.empty:
+        # 按涨跌幅排序降序
+        df = df.sort_values(by="涨跌幅", ascending=False)
+        top_n = df.head(n)
+        return top_n.to_dict('records')
     return []
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(20),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
+)
 def fetch_sentiment_score(symbol: str) -> float:
     """
-    Phase 3 升级：使用 NLP 分析舆情
-    抓取个股最新新闻标题，使用 NLP 模型/词汇库判断情感倾向
-    返回: -1.0 (负面) ~ +1.0 (正面)
+    抓取个股最新新闻标题，并简单判断关键词：
+    利好词：增长、利好、突破、大涨、涨停、分红、回购 (+1)
+    利空词：下跌、利空、爆雷、减持、跌停、亏损、警示 (-1)
     """
     clean_symbol = _clean_symbol(symbol)
-    logger.info(f"[Phase 3] 获取 {symbol} 近期舆情并进行 NLP 分析...")
-    
-    # 延迟导入 SentimentAggregator（避免 SyntaxError 导致 RetryError）
-    try:
-        from nlp_sentiment import SentimentAggregator
-    except Exception as e:
-        logger.warning(f"导入 SentimentAggregator 失败: {e}")
-        return 0.0
-    
+    logger.info(f"获取 {symbol} 近期舆情...")
     try:
         df = ak.stock_news_em(symbol=clean_symbol)
     except Exception as e:
@@ -341,48 +194,32 @@ def fetch_sentiment_score(symbol: str) -> float:
         return 0.0
         
     if df is None or df.empty:
-        logger.warning(f"{symbol} 暂无最新新闻数据")
         return 0.0
-    
-    # 收集所有新闻文本
-    news_texts = []
+        
+    score = 0
+    # 一般接口返回包含 '新闻内容' 或 '新闻标题' 或 'title' 等列
+    # 我们遍历最新几条记录的文本内容
+    text_content = ""
     for col in df.columns:
         if '标题' in col or '内容' in col or 'title' in col.lower() or 'content' in col.lower():
-            for text in df[col].astype(str).head(20):
-                if text and text != 'nan':
-                    news_texts.append(text)
+            text_content += " ".join(df[col].astype(str).head(10).tolist())
+            
+    positive_words = ['增长', '利好', '突破', '大涨', '涨停', '分红', '回购', '增持', '超预期']
+    negative_words = ['下跌', '利空', '爆雷', '减持', '跌停', '亏损', '警示', '立案', '退市']
     
-    if not news_texts:
-        logger.warning(f"{symbol} 无有效新闻文本")
-        return 0.0
-    
-    # 使用 NLP 分析器聚合舆情
-    try:
-        aggregator = SentimentAggregator()
-        sentiment_score = aggregator.aggregate_sentiment(news_texts)
-        category = aggregator.get_sentiment_category(sentiment_score)
-        logger.info(f"✅ {symbol} NLP 舆情分析完成: {category} (评分: {sentiment_score:+.2f})")
-        return sentiment_score
-    except Exception as e:
-        logger.warning(f"NLP 分析出错，降级到关键词方案: {e}")
-        # 降级方案：使用关键词统计
-        text_content = " ".join(news_texts)
-        score = 0
-        positive_words = ['增长', '利好', '突破', '大涨', '涨停', '分红', '回购', '增持', '超预期']
-        negative_words = ['下跌', '利空', '爆雷', '减持', '跌停', '亏损', '警示', '立案', '退市']
+    for word in positive_words:
+        score += text_content.count(word)
+    for word in negative_words:
+        score -= text_content.count(word)
         
-        for word in positive_words:
-            score += text_content.count(word)
-        for word in negative_words:
-            score -= text_content.count(word)
-        
-        # 归一化到 -1 ~ +1
-        total_count = len(positive_words) + len(negative_words)
-        if total_count > 0:
-            score = score / total_count
-        
-        return max(-1.0, min(1.0, score))
+    return score
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(20),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=lambda retry_state: logger.warning(f"获取数据失败，等待20s重试...")
+)
 def fetch_fund_flow(symbol: str) -> dict:
     """
     获取个股主力净流入数据
@@ -403,20 +240,13 @@ def fetch_fund_flow(symbol: str) -> dict:
         
     if df is None or df.empty:
         return {}
-    
-    # 确保按日期升序排列，取最新一行
+        
+    # 获取最新一天的资金流向信息
+    latest = df.iloc[0] if getattr(df.iloc[0], 'name', None) == 0 else df.iloc[-1]
+    # 取决于接口顺序，若是倒序排首行为最新。保妥起见如果包含日期排序一下：
     if '日期' in df.columns:
         df = df.sort_values(by='日期', ascending=True)
-    latest = df.iloc[-1]
-    
-    # 将 Series 转为标量 dict（处理可能存在的 NaN 值）
-    result = {}
-    for key, value in latest.items():
-        if isinstance(value, (pd.Timestamp, pd.Period)):
-            result[key] = str(value)
-        elif pd.isna(value):
-            result[key] = 0.0
-        else:
-            result[key] = value
-    return result
+        latest = df.iloc[-1]
+        
+    return latest.to_dict()
 
