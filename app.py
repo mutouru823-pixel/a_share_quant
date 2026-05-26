@@ -465,6 +465,47 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
     # 预计算一些在 f-string 中容易引起 # 符号注释崩溃的 CSS 颜色变量
     cum_ret_color = "#00c076" if cum_ret >= 0 else "#ff3b30"
 
+    # 动态计算每个基金的估值安全边际 (Valuation Margin of Safety)
+    safety_margin_html = ""
+    if is_fund_portfolio and detail_df is not None and not detail_df.empty:
+        safety_margin_html = """
+            <h4 style="color: #ffffff; margin-top: 24px; margin-bottom: 12px; font-size: 16px; font-weight: 700;">📊 基金估值安全边际水位诊断 (Valuation Safety Margin)</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        """
+        for sym in selected_symbols:
+            sym_df = detail_df[detail_df["symbol"] == sym]
+            if not sym_df.empty and "next_day_return" in sym_df.columns:
+                cum_returns = (1 + sym_df["next_day_return"]).cumprod()
+                latest_val = cum_returns.iloc[-1]
+                max_val = cum_returns.max()
+                min_val = cum_returns.min()
+                margin = (max_val - latest_val) / (max_val - min_val) if max_val > min_val else 0.5
+                margin_pct = margin * 100
+                drawdown_from_peak = (1.0 - latest_val / max_val) * 100
+                
+                # 判定等级
+                if margin_pct >= 70:
+                    status_desc = "🔥 极高安全边际 (底部黄金吸筹区)"
+                    status_color = "#00c076"
+                elif margin_pct >= 40:
+                    status_desc = "✨ 稳健吸筹区 (中低估值水位)"
+                    status_color = "#2962ff"
+                else:
+                    status_desc = "⚠️ 警惕追高区 (中高估值水位，建议分批止盈)"
+                    status_color = "#ff3b30"
+                
+                safety_margin_html += f"""
+                <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">📈 基金代号: {sym}</div>
+                    <div style="font-size: 16px; font-weight: 700; margin: 4px 0; color: {status_color};">{margin_pct:.1f}% 安全边际</div>
+                    <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
+                        <b>当前状态</b>：{status_desc}<br/>
+                        相对于回测最高点已回撤了 <b>{drawdown_from_peak:.1f}%</b>。底仓可继续安心持有或继续进行定投分摊成本。
+                    </p>
+                </div>
+                """
+        safety_margin_html += "</div>"
+
     st.markdown(
         f"""
         <div style="background: #131722; border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 8px 32px {border_shadow}; margin-bottom: 24px; position: relative;">
@@ -509,6 +550,8 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
                 </div>
             </div>
 
+            {safety_margin_html}
+
             <h4 style="color: #ffffff; margin-top: 0; margin-bottom: 12px; font-size: 16px; font-weight: 700;">💡 新手操盘实盘指南 (Advisor Tips)</h4>
             <div style="background: rgba(41, 98, 255, 0.08); border-left: 4px solid var(--brand-blue); padding: 16px; border-radius: 4px; margin-bottom: 20px;">
                 <p style="font-size: 13px; color: #ffffff; margin: 0 0 8px 0; font-weight: 700;">📌 资金与仓位分配动作建议：</p>
@@ -527,6 +570,77 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
         """,
         unsafe_allow_html=True
     )
+
+    # 2. 智能基金定投复利计算器 (DCA Compound Wealth Simulator)
+    if is_fund_portfolio:
+        st.markdown('<div style="margin-top: 10px;"></div>', unsafe_allow_html=True)
+        with st.expander("🧮 智能基金定投复利模拟器 (DCA Compound Wealth Simulator)", expanded=True):
+            st.markdown(
+                '<div style="font-size: 13px; color: var(--text-sub); margin-bottom: 12px;">根据策略回测的年化收益率，模拟您在实盘中定期定额买入该组合的长线复利效果：</div>',
+                unsafe_allow_html=True
+            )
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                dca_amount = st.number_input("每期定投金额 (元)", min_value=100, max_value=100000, value=1000, step=100, key="dca_amount_input")
+            with col2:
+                dca_freq = st.selectbox("定投扣款频率", options=["按月定投", "按周定投"], index=0, key="dca_freq_input")
+            with col3:
+                ann_return_val = float(stats.get("annualized_return", 0.08))
+                default_rate = max(1.0, min(50.0, ann_return_val * 100))
+                expected_yield = st.number_input("预期年化收益率 (%)", min_value=0.1, max_value=100.0, value=float(default_rate), step=0.5, key="dca_yield_input")
+            with col4:
+                years = st.slider("定投投资限期 (年)", min_value=1, max_value=30, value=3, step=1, key="dca_years_input")
+                
+            # 计算定投收益
+            # 假定在每期初进行扣款
+            if dca_freq == "按月定投":
+                periods = years * 12
+                rate_per_period = expected_yield / 100 / 12
+            else:
+                periods = years * 52
+                rate_per_period = expected_yield / 100 / 52
+                
+            total_principal = dca_amount * periods
+            if rate_per_period > 0:
+                future_value = dca_amount * (((1 + rate_per_period) ** periods - 1) / rate_per_period) * (1 + rate_per_period)
+            else:
+                future_value = total_principal
+                
+            total_profit = future_value - total_principal
+            growth_pct = (total_profit / total_principal) * 100 if total_principal > 0 else 0.0
+            
+            st.markdown(
+                f"""
+                <div style="display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; width: 100%;">
+                    <div class="tv-ticker-card" style="flex: 1; min-width: 140px; background: #1e222d;">
+                        <div class="tv-ticker-label" style="font-size: 11px;">💰 累计定投本金</div>
+                        <div class="tv-ticker-val" style="color: #ffffff; font-size: 18px;">{total_principal:,.0f} 元</div>
+                        <div class="tv-ticker-sub" style="font-size: 10px;">持之以恒的财富基石</div>
+                    </div>
+                    <div class="tv-ticker-card" style="flex: 1; min-width: 140px; background: #1e222d;">
+                        <div class="tv-ticker-label" style="font-size: 11px;">💎 到期预期总资产</div>
+                        <div class="tv-ticker-val" style="color: #00c076; font-size: 18px;">{future_value:,.2f} 元</div>
+                        <div class="tv-ticker-sub" style="font-size: 10px;">本金 + 预期复利收益</div>
+                    </div>
+                    <div class="tv-ticker-card" style="flex: 1; min-width: 140px; background: #1e222d;">
+                        <div class="tv-ticker-label" style="font-size: 11px;">📈 预期净收益 (利息)</div>
+                        <div class="tv-ticker-val" style="color: #00c076; font-size: 18px;">+{total_profit:,.2f} 元</div>
+                        <div class="tv-ticker-sub" style="font-size: 10px;">时间玫瑰绽放的果实</div>
+                    </div>
+                    <div class="tv-ticker-card" style="flex: 1; min-width: 140px; background: #1e222d;">
+                        <div class="tv-ticker-label" style="font-size: 11px;">⚡ 净资产增值度</div>
+                        <div class="tv-ticker-val" style="color: #2962ff; font-size: 18px;">+{growth_pct:+.2f}%</div>
+                        <div class="tv-ticker-sub" style="font-size: 10px;">相比本金资产收益比例</div>
+                    </div>
+                </div>
+                <div style="background: rgba(0, 192, 118, 0.08); border-left: 4px solid #00c076; padding: 12px; border-radius: 4px; margin-top: 16px;">
+                    <span style="font-size: 12px; color: #ffffff; line-height: 1.5;">
+                        <b>💡 定投复利感悟</b>：如果坚持定投 <b>{years}年</b>，您的本金将通过该策略在预期 <b>{expected_yield:.1f}%</b> 的年化复利滚存下成长至 <b>{future_value:,.0f}元</b>，资产净增值了 <b>{growth_pct:.1f}%</b>。时间是散户和小白量化最好的朋友，定投平摊了成本并完美避开了由于择时踏空引起的持仓焦虑！
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 def render_detailed_analysis(monitor_results: list[dict], financial_data_cache: dict = None) -> None:
     """Phase 2 新增：详细分析报告展示"""
     if not monitor_results:
