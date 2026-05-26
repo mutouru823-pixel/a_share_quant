@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import sys
 
@@ -51,10 +52,13 @@ RESULT_COLUMNS = [
 
 
 SYMBOL_PRESETS = {
-    "白酒龙头": "600519,000858,000568",
-    "银行权重": "600036,600000,601398",
-    "新能源": "300750,002594,601012",
-    "半导体": "688981,603501,300223",
+    "【ETF核心指数基金】": "510300,159915,510500",  # 沪深300 ETF, 创业板 ETF, 中证500 ETF
+    "【场外热门公募基金】": "110011,000001,003095",  # 易方达蓝筹精选, 华夏成长, 易方达安全量化
+    "【科技与成长 ETF】": "588000,159949,512480",  # 科创50 ETF, 创业板50 ETF, 芯片 ETF
+    "【跨境与全球 ETF】": "513100,513050,513180",  # 纳指100 ETF, 恒生科技 ETF, 恒生互联网 ETF
+    "【消费与行业 ETF】": "515650,512010,512690",  # 消费 ETF, 医药 ETF, 酒 ETF
+    "白酒龙头股票": "600519,000858,000568",
+    "新能源龙头股票": "300750,002594,601012",
 }
 
 
@@ -339,7 +343,7 @@ def render_price_charts(raw_data_cache: dict[str, pd.DataFrame]) -> None:
 
 def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, selected_symbols: list[str]) -> None:
     """
-    【智能投顾与新手诊断模块】对标 TradingView Advisor，将高深的回测指标翻译成小白通俗易懂的白话诊断与操盘建议。
+    【智能投顾与新手诊断模块】对标 TradingView Advisor，将高深的回测指标翻译成小白通俗易懂的白话诊断与操盘建议，支持股票与基金定投分流诊断。
     """
     st.markdown('<div style="margin-top: 30px;"></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title" style="color: #2962ff; font-size: 20px; font-weight: 700; margin-bottom: 16px;">🎓 小白策略自诊断与智能投资建议 (TradingView Advisor)</div>', unsafe_allow_html=True)
@@ -361,6 +365,9 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
     excess_ret = float(stats.get("excess_return", 0.0))
     trades = int(stats.get("trades", 0))
     hit_rate = float(stats.get("hit_rate", 0.5))
+    
+    # 动态检测是否为 交易所 ETF 或 场外公募基金组合
+    is_fund_portfolio = any((sym.startswith(("5", "1", "0", "2", "3", "4", "7", "8", "9")) and len(sym) == 6) for sym in selected_symbols)
     
     # 1. 策略星级综合评定 (Beginner Strategy Star Rating)
     stars = 2.0
@@ -397,23 +404,73 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
     # 诊断等级与星级卡片样式
     if stars >= 4.0:
         badge_color = "#00c076"
-        badge_text = "极佳 / 强烈推荐模拟"
+        if is_fund_portfolio:
+            badge_text = "极佳 / 极度推荐长线定投"
+        else:
+            badge_text = "极佳 / 强烈推荐模拟"
         border_shadow = "rgba(0, 192, 118, 0.2)"
     elif stars >= 3.0:
         badge_color = "#2962ff"
-        badge_text = "稳健 / 建议轻仓试水"
+        if is_fund_portfolio:
+            badge_text = "稳健 / 推荐轻仓配置定投"
+        else:
+            badge_text = "稳健 / 建议轻仓试水"
         border_shadow = "rgba(41, 98, 255, 0.2)"
     else:
         badge_color = "#ff3b30"
-        badge_text = "高危 / 需优化后观察"
+        badge_text = "高危 / 需调优后观察"
         border_shadow = "rgba(255, 59, 48, 0.2)"
+ 
+    # 基金 vs 股票大白话定制
+    if is_fund_portfolio:
+        portfolio_type_desc = "指数基金/ETF/场外公募定投组合"
+        mdd_beginner_desc = "定投安全垫 (历史回撤深度)"
+        mdd_explanation = f"""
+                        <b>新手解读</b>：这是你<b>长线定投</b>或者分批买入该基金/ETF时，需要做好的最大账面浮亏准备。
+                        { "<b>极佳（极其适合定投理财）</b>：最大浮亏在10%以内。这非常稳健，是定投理投、获取复利最省心的选择，持仓心理几乎没有压力。" if mdd < 0.10 else
+                          "<b>适中（宽基指数标准波动）</b>：最大浮亏在20%以内，属于沪深300等核心大盘指数的常态波动。定投可以助你在回撤底部以更便宜的价格收集更多份额，平摊持仓成本。" if mdd < 0.20 else
+                          "<b>偏高（高弹性主题基金）</b>：最大浮亏在20%-30%之间。这通常是高成长的行业主题基金（如半导体、医药、芯片、新能源）。定投时需严控总仓位，分批吸纳筹码。" if mdd < 0.30 else
+                          "<b>高风险（波动极度分化）</b>：最大浮亏超过30%！这代表该基金/ETF波动极其剧烈。定投风险较大，新手必须严控单笔额度，或利用下方‘参数网格搜索’优化风控线以摊薄回撤。" }
+                        """
+        
+        advice_text = f"""
+                    <b>【🔎 基金定投与公募/ETF 强弱轮动实盘指南】</b>：
+                    监测到该组合以 <b>指数基金/ETF/场外公募基金</b> 为主，非常适合散户和小白长线理财。
+                    - <b>智能定投扣款点指南</b>：当策略给出的<b>推荐度较高（如夏普良好、胜率高）</b>时，可作为<b>“定投多倍（150%-200%）扣款信号”</b>，在底部加速捡便宜筹码以分摊成本；当系统发出<b>风控警告</b>时，代表短期高估或技术面破位，应<b>暂停定投扣款，守住本金利润并等待回调后再扣</b>。
+                    - <b>轮动配置建议</b>：
+                      { "该基金组合夏普比率极好，最大回撤可控，是绝佳的长线财富增值标的。建议以 <b>60% - 80%</b> 的高仓位作为核心底仓进行长线定投持有。" if (mdd < 0.15 and sharpe >= 1.0) else
+                        "该组合具有一定的行业弹性和进攻性，但最大回撤不可忽视。建议将仓位控制在 <b>30% - 40%</b> 之间，采用<b>按月/按周定投方式</b>建仓，不建议单笔重仓买入。" if (mdd < 0.25 and sharpe >= 0.5) else
+                        "该基金/ETF组合历史波动极大，性价比偏低。当前参数在弱势市场下定投可能会面临漫长的浮亏熬底。强烈建议在下方运行<b>‘参数网格搜索’</b>以寻找更能降低回撤、平稳收益率的最佳量化风控参数后再行定投。" }
+                    """
+    else:
+        portfolio_type_desc = "股票交易组合"
+        mdd_beginner_desc = "最惨历史浮亏 (最大心理承受)"
+        mdd_explanation = f"""
+                        <b>新手解读</b>：代表如果你极其不幸买在了<b>最高点</b>，跌到最低点时账户可能会面临的最大<b>账面浮动亏损</b>。
+                        { "<b>极佳（回撤极小）</b>：浮亏在10%以内，属于极低波动策略，持仓安全感十足，最适合小白。" if mdd < 0.10 else
+                          "<b>适中（正常回撤）</b>：浮亏在20%以内，属于正常二级市场波动范畴，需要做好本金暂时浮亏的心理准备。" if mdd < 0.20 else
+                          "<b>偏高（需要心脏大）</b>：浮亏超20%，新手容易在浮亏探底时惊慌失措进而割肉，切勿盲目满仓！" if mdd < 0.30 else
+                          "<b>高风险（极易恐慌）</b>：浮亏超30%！这极考验神经。新手切勿重仓，策略急需通过参数调优降低最大回撤！" }
+                        """
+        
+        advice_text = f"""
+                    <b>【📌 资金与仓位分配动作建议】</b>：
+                    监测到该组合以 <b>A股高风险股票</b> 为主，持仓体验较刺激，请严格执行风控：
+                    - <b>仓位分配策略</b>：
+                      { "该策略历史表现极为稳健，夏普比率优秀且回撤极低。新手可考虑用总资金的 <b>5% - 10%</b> 进行初期实盘轻仓探索，注意防范AkShare网络限流引起的信号漂移。" if (mdd < 0.15 and sharpe >= 1.0) else
+                        "该策略具备一定的盈利能力，但历史浮亏（最大回撤）不容忽视。切忌一把梭哈！建议采用<b>分批定投或金字塔建仓</b>（如 3:3:4 比例分批买入）以平摊持仓成本，每只个股分配仓位不超过 10%。" if (mdd < 0.25 and sharpe >= 0.5) else
+                        "该策略历史回撤极大（超过25%）或夏普性价比偏低。当前盲目实盘极易沦为韭菜。建议使用下方的<b>‘参数网格搜索’</b>功能进行多维度搜索调优，直至夏普比率拉升、最大回撤压降到可接受的水平后再作考虑。" }
+                    """
+
+    # 预计算一些在 f-string 中容易引起 # 符号注释崩溃的 CSS 颜色变量
+    cum_ret_color = "#00c076" if cum_ret >= 0 else "#ff3b30"
 
     st.markdown(
         f"""
         <div style="background: #131722; border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; box-shadow: 0 8px 32px {border_shadow}; margin-bottom: 24px; position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px;">
                 <div>
-                    <span style="font-size: 12px; color: var(--text-sub); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">策略评级 (Beginner Score)</span>
+                    <span style="font-size: 12px; color: var(--text-sub); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">策略诊断标的属性：{portfolio_type_desc}</span>
                     <span style="font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">诊断结论：{badge_text}</span>
                 </div>
                 <div style="text-align: right;">
@@ -426,10 +483,10 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;">
                 <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
                     <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">💰 赚钱能力 (本金增值度)</div>
-                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: { '#00c076' if cum_ret >= 0 else '#ff3b30' };">{cum_ret:+.2%}</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: {cum_ret_color};">{cum_ret:+.2%}</div>
                     <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
-                        <b>新手解读</b>：回测期间，如果投入 <b>10,000元</b> 本金，你的资产将增值到 <b>{10000 * (1 + cum_ret):,.2f}元</b>。
-                        { "表现极强，收益大幅跑赢绝大多数理财产品！" if cum_ret > 0.15 else "收益较为温和，起到了一定的增值效果。" if cum_ret > 0 else "目前本金正处于缩水状态，亏损容易让小白心态失衡，千万别实盘！" }
+                        <b>新手解读</b>：回测期间，如果期初投入 <b>10,000元</b> 本金，你的资产将增值到 <b>{10000 * (1 + cum_ret):,.2f}元</b>。
+                        { "表现极强，收益大幅跑赢绝大多数理财产品！" if cum_ret > 0.15 else "收益较为温和，起到了一定的长线增值效果。" if cum_ret > 0 else "目前本金正处于缩水状态，指数深套容易让小白心态失衡，千万别实盘！" }
                     </p>
                 </div>
                 <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
@@ -437,21 +494,17 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
                     <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: #2962ff;">{sharpe:.2f} (夏普比率)</div>
                     <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
                         <b>新手解读</b>：这是衡量“性价比”的指标。
-                        { "<b>极高（超稳健）</b>：策略收益远超其波动风险，持仓期间心电图极其平稳，几乎没有持仓焦虑，极度适合新手。" if sharpe >= 1.5 else
-                          "<b>良好（稳健）</b>：波动在正常股市范围内，收益产出性价比好，新手正常心态即可拿住。" if sharpe >= 0.8 else
-                          "<b>中等（有持仓焦虑）</b>：虽然赚钱但一波三折，持仓过程可能让你经常焦虑失眠，需要一定的持仓耐心。" if sharpe >= 0.3 else
-                          "<b>极低（极易焦虑割肉）</b>：性价比较低，上下震荡风险过大，新手持仓极易在波动中由于恐惧而割肉离场。" }
+                        { "<b>极高（超稳健）</b>：收益远超其波动风险，持仓期间心电图极其平稳，几乎没有持仓焦虑，极其适合新手持仓。" if sharpe >= 1.5 else
+                          "<b>良好（稳健）</b>：波动在正常股市范围内，收益产出性价比好，新手正常理财心态即可长期拿住。" if sharpe >= 0.8 else
+                          "<b>中等（有持仓焦虑）</b>：虽然赚钱但一波三折，持仓过程可能让你经常因浮盈折损而焦虑，需要定力。" if sharpe >= 0.3 else
+                          "<b>极低（极易恐慌割肉）</b>：性性比极低，收益无法弥补震荡风险，新手极易在暴跌中割肉离场。" }
                     </p>
                 </div>
                 <div style="background: #1e222d; padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
-                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">📉 最惨历史浮亏 (最大心理承受)</div>
-                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: #ff3b30;">-{mdd:.2%} (最大回撤)</div>
+                    <div style="font-size: 12px; color: var(--text-sub); font-weight: 600;">{mdd_beginner_desc}</div>
+                    <div style="font-size: 18px; font-weight: 700; margin: 4px 0; color: #ff3b30;">-{mdd:.2%}</div>
                     <p style="font-size: 12px; color: var(--text-main); margin: 0; line-height: 1.5;">
-                        <b>新手解读</b>：代表如果你极其不幸买在了<b>最高点</b>，到跌到最低点时账户可能会面临的最大<b>浮动亏损</b>。
-                        { "<b>极佳（回撤极小）</b>：浮亏在10%以内，属于极低波动策略，持仓安全感十足，最适合小白。" if mdd < 0.10 else
-                          "<b>适中（正常回撤）</b>：浮亏在20%以内，属于正常大盘波动范畴，需要做好本金暂时浮亏的心理准备。" if mdd < 0.20 else
-                          "<b>偏高（需要心脏大）</b>：浮亏超20%，新手容易在浮亏探底时惊慌失措进而割肉，切勿盲目满仓！" if mdd < 0.30 else
-                          "<b>高风险（极易恐慌）</b>：浮亏超30%！这极考验神经。新手切勿重仓，策略急需通过参数调优降低最大回撤！" }
+                        {mdd_explanation}
                     </p>
                 </div>
             </div>
@@ -460,24 +513,20 @@ def render_beginner_advisor(summary_df: pd.DataFrame, detail_df: pd.DataFrame, s
             <div style="background: rgba(41, 98, 255, 0.08); border-left: 4px solid var(--brand-blue); padding: 16px; border-radius: 4px; margin-bottom: 20px;">
                 <p style="font-size: 13px; color: #ffffff; margin: 0 0 8px 0; font-weight: 700;">📌 资金与仓位分配动作建议：</p>
                 <p style="font-size: 13px; color: var(--text-main); margin: 0; line-height: 1.6;">
-                    { "<b>【✅ 适合实盘轻仓配置】</b>：该策略历史表现极为稳健，夏普比率优秀且回撤极低。新手可考虑用总资金的 <b>5% - 10%</b> 进行初期实盘轻仓探索，注意防范AkShare网络限流引起的信号漂移。" if (mdd < 0.15 and sharpe >= 1.0) else
-                      "<b>【⚠️ 建议观望/分批建仓】</b>：该策略具备一定的盈利能力，但历史浮亏（最大回撤）不容忽视。切忌一把梭哈！建议采用<b>分批定投或金字塔建仓</b>（如 3:3:4 比例分批买入）以平摊持仓成本，每只个股分配仓位不超过 10%。" if (mdd < 0.25 and sharpe >= 0.5) else
-                      "<b>【🚫 严禁小白实盘交易】</b>：策略历史回撤极大（超过25%）或夏普性价比偏低。当前盲目实盘极易沦为韭菜。建议使用下方的<b>‘参数网格搜索’</b>功能进行多维度搜索调优，直至夏普比率拉升、最大回撤压降到可接受的水平后再作考虑。" }
+                    {advice_text}
                 </p>
             </div>
 
             <h4 style="color: #ffffff; margin-top: 0; margin-bottom: 12px; font-size: 15px; font-weight: 700;">🚨 小白量化风控三大警戒线 (Hard Rules)</h4>
             <ul style="font-size: 12px; color: var(--text-main); margin: 0; padding-left: 20px; line-height: 1.8;">
-                <li><b>一票否决止损线</b>：单只股票买入后，若跌破个股买入价的 <b>-7% - 8%</b>，必须执行钢铁止损，防止小套变深套，坚决不参与长周期死扛。</li>
-                <li><b>严禁小白加杠杆</b>：在策略没有获得连续 3 个季度平稳盈利流水前，<b>坚决不要融券或使用借贷资金</b>，量化回测的风险往往隐藏在黑天鹅尾部中。</li>
+                <li><b>指数/定投防死扛线</b>：即使是定投宽基指数ETF，若单只个股或行业ETF买入破位严重，单只基金累计浮亏跌破 <b>-15%</b> 且策略处于持续空头推荐，可选择<b>暂停定投扣款并等待趋势修复</b>，拒绝无脑死扛。</li>
+                <li><b>严禁小白加杠杆</b>：在策略没有获得连续 3 个季度平稳盈利流水前，<b>坚决不要融券或使用借贷资金</b>，量化回测 the risk 往往隐藏在黑天鹅尾部中。</li>
                 <li><b>策略信号钢铁纪律</b>：量化交易的核心是战胜人性的贪婪与恐惧。一旦系统计算出<b>仓位减仓或清仓警告信号</b>，不可抱有“明天可能会反弹”的幻想，必须严格执行。</li>
             </ul>
         </div>
         """,
         unsafe_allow_html=True
     )
-
-
 def render_detailed_analysis(monitor_results: list[dict], financial_data_cache: dict = None) -> None:
     """Phase 2 新增：详细分析报告展示"""
     if not monitor_results:
@@ -625,13 +674,17 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
     if portfolio.empty:
         portfolio = summary_df.head(1)
     latest = portfolio.iloc[0]
+    cum_ret_val = float(latest.get('cumulative_return', 0.0))
+    excess_ret_val = float(latest.get('excess_return', 0.0))
+    cum_ret_color = "#00c076" if cum_ret_val >= 0 else "#ff3b30"
+    excess_ret_color = "#00c076" if excess_ret_val >= 0 else "#ff3b30"
 
     st.markdown(
         f"""
         <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; width: 100%;">
             <div class="tv-ticker-card">
                 <div class="tv-ticker-label">📈 组合累计收益</div>
-                <div class="tv-ticker-val" style="color: { '#00c076' if float(latest.get('cumulative_return', 0.0)) >= 0 else '#ff3b30' };">{float(latest.get('cumulative_return', 0.0)):+.2%}</div>
+                <div class="tv-ticker-val" style="color: {cum_ret_color};">{cum_ret_val:+.2%}</div>
                 <div class="tv-ticker-sub">回测区间总收益率</div>
             </div>
             <div class="tv-ticker-card">
@@ -646,7 +699,7 @@ def render_backtest_analysis(selected_symbols: list[str], default_days: int = 26
             </div>
             <div class="tv-ticker-card">
                 <div class="tv-ticker-label">⚡ 组合超额收益</div>
-                <div class="tv-ticker-val" style="color: { '#00c076' if float(latest.get('excess_return', 0.0)) >= 0 else '#ff3b30' };">{float(latest.get('excess_return', 0.0)):+.2%}</div>
+                <div class="tv-ticker-val" style="color: {excess_ret_color};">{excess_ret_val:+.2%}</div>
                 <div class="tv-ticker-sub">相较于基准指数的超额</div>
             </div>
         </div>
@@ -981,12 +1034,12 @@ def main() -> None:
     st.markdown(
         """
         <div class="hero-panel">
-            <h1 class="hero-title">A 股量化监控操作台</h1>
-            <p class="hero-sub">输入股票代码后可直接执行分析、查看评分、观察价格趋势与详细解读。</p>
-            <span class="tag-chip">AkShare 实时驱动</span>
+            <h1 class="hero-title">A 股股票与 ETF 基金量化监控操作台</h1>
+            <p class="hero-sub">已支持 A 股个股与交易所主流 ETF 指数基金（支持定投分析与轮动评级）。输入代码后可执行智能量化诊断、观察 TradingView 风格趋势图表并导出策略意见。</p>
+            <span class="tag-chip">AkShare 基金/个股双路自适应引擎</span>
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     if "analysis_cache" not in st.session_state:
@@ -1228,12 +1281,16 @@ def main() -> None:
     else:
         top_sector_delta = "N/A"
 
+    sentiment_color = "#00c076" if avg_sentiment >= 0 else "#ff3b30"
+    fund_color = "#00c076" if total_fund_net >= 0 else "#ff3b30"
+    alert_color = "#ff3b30" if len(alerts) > 0 else "#00c076"
+
     st.markdown(
         f"""
         <div style="display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; width: 100%;">
             <div class="tv-ticker-card">
                 <div class="tv-ticker-label">📰 市场情绪得分</div>
-                <div class="tv-ticker-val" style="color: { '#00c076' if avg_sentiment >= 0 else '#ff3b30' };">{avg_sentiment:+.2f}</div>
+                <div class="tv-ticker-val" style="color: {sentiment_color};">{avg_sentiment:+.2f}</div>
                 <div class="tv-ticker-sub">近期新闻舆情偏向度</div>
             </div>
             <div class="tv-ticker-card">
@@ -1243,12 +1300,12 @@ def main() -> None:
             </div>
             <div class="tv-ticker-card">
                 <div class="tv-ticker-label">💰 主力资金流入</div>
-                <div class="tv-ticker-val" style="color: { '#00c076' if total_fund_net >= 0 else '#ff3b30' };">{total_fund_net:,.0f} 万元</div>
+                <div class="tv-ticker-val" style="color: {fund_color};">{total_fund_net:,.0f} 万元</div>
                 <div class="tv-ticker-sub">个股主力资金加总流入额</div>
             </div>
             <div class="tv-ticker-card">
                 <div class="tv-ticker-label">⚠️ 风控预警数量</div>
-                <div class="tv-ticker-val" style="color: { '#ff3b30' if len(alerts) > 0 else '#00c076' };">{len(alerts)}</div>
+                <div class="tv-ticker-val" style="color: {alert_color};">{len(alerts)}</div>
                 <div class="tv-ticker-sub">触发风控预警规则的个股数</div>
             </div>
         </div>

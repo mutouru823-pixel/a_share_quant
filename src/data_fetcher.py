@@ -86,37 +86,126 @@ def fetch_daily_data(symbol: str, days: int = 200) -> pd.DataFrame:
     logger.info(f"防封锁机制：随机休眠 {sleep_time:.2f} 秒...")
     time.sleep(sleep_time)
     
-    # 获取 A 股日线数据（qfq：前复权）
-    df = ak.stock_zh_a_hist(
-        symbol=clean_symbol, 
-        period="daily", 
-        start_date=start_str, 
-        end_date=end_str, 
-        adjust="qfq"
-    )
+    # 动态支持 A 股 ETFs、场外开放式基金与普通股票的自适应拉取
+    is_etf = len(clean_symbol) == 6 and clean_symbol.startswith(("5", "1"))
+    is_mutual_fund = len(clean_symbol) == 6 and clean_symbol.startswith(("0", "2", "3", "4", "7", "8", "9"))
+    
+    df = pd.DataFrame()
+    
+    try:
+        if is_mutual_fund:
+            logger.info(f"检测为场外开放式基金标的，调用 AkShare fund_open_fund_info_em 接口进行拉取")
+            df_fund = ak.fund_open_fund_info_em(symbol=clean_symbol)
+            if df_fund is not None and not df_fund.empty:
+                col_mapping = {}
+                for col in df_fund.columns:
+                    col_bytes = col.encode('utf-8', errors='ignore')
+                    if col_bytes == b'\xe5\x87\x80\xe5\x80\xbc\xe6\x97\xa5\xe6\x9c\x9f':
+                        col_mapping[col] = 'date'
+                    elif col_bytes == b'\xe5\x8d\x95\xe4\xbd\x8d\xe5\x87\x80\xe5\x80\xbc':
+                        col_mapping[col] = 'close'
+                if 'date' in col_mapping.values() and 'close' in col_mapping.values():
+                    df = df_fund.rename(columns=col_mapping)
+                    df = df[['date', 'close']].copy()
+                    df['close'] = pd.to_numeric(df['close'], errors='coerce')
+                    df['open'] = df['close']
+                    df['high'] = df['close']
+                    df['low'] = df['close']
+                    df['volume'] = 1000000.0  # 设为默认虚拟成交量
+        elif is_etf:
+            logger.info(f"检测为 ETF 基金标的，调用 AkShare fund_etf_hist_em 接口进行拉取")
+            df = ak.fund_etf_hist_em(
+                symbol=clean_symbol,
+                period="daily",
+                start_date=start_str,
+                end_date=end_str,
+                adjust="qfq"
+            )
+        else:
+            logger.info(f"检测为普通 A 股股票，调用 AkShare stock_zh_a_hist 接口进行拉取")
+            df = ak.stock_zh_a_hist(
+                symbol=clean_symbol, 
+                period="daily", 
+                start_date=start_str, 
+                end_date=end_str, 
+                adjust="qfq"
+            )
+    except Exception as e:
+        logger.warning(f"首选接口获取 {symbol} 失败: {e}")
+        df = pd.DataFrame()
+        
+    # 三通道自适应多层级自适应兜底切换
+    if df is None or df.empty:
+        logger.info(f"首选通道未获取到数据，启动三通道自适应兜底拉取...")
+        for fetch_type in ["etf", "open_fund", "stock"]:
+            if fetch_type == "open_fund":
+                try:
+                    logger.info(f"【兜底通道】尝试调用 fund_open_fund_info_em 接口...")
+                    df_fund = ak.fund_open_fund_info_em(symbol=clean_symbol)
+                    if df_fund is not None and not df_fund.empty:
+                        col_mapping = {}
+                        for col in df_fund.columns:
+                            col_bytes = col.encode('utf-8', errors='ignore')
+                            if col_bytes == b'\xe5\x87\x80\xe5\x80\xbc\xe6\x97\xa5\xe6\x9c\x9f':
+                                col_mapping[col] = 'date'
+                            elif col_bytes == b'\xe5\x8d\x95\xe4\xbd\x8d\xe5\x87\x80\xe5\x80\xbc':
+                                col_mapping[col] = 'close'
+                        if 'date' in col_mapping.values() and 'close' in col_mapping.values():
+                            df = df_fund.rename(columns=col_mapping)
+                            df = df[['date', 'close']].copy()
+                            df['close'] = pd.to_numeric(df['close'], errors='coerce')
+                            df['open'] = df['close']
+                            df['high'] = df['close']
+                            df['low'] = df['close']
+                            df['volume'] = 1000000.0
+                            logger.info("【兜底成功】已通过场外开放式基金通道成功拉取！")
+                            break
+                except Exception as ex:
+                    logger.debug(f"场外基金兜底通道报错: {ex}")
+            elif fetch_type == "etf":
+                try:
+                    logger.info(f"【兜底通道】尝试调用 fund_etf_hist_em 接口...")
+                    df_etf = ak.fund_etf_hist_em(symbol=clean_symbol, period="daily", start_date=start_str, end_date=end_str, adjust="qfq")
+                    if df_etf is not None and not df_etf.empty:
+                        df = df_etf
+                        logger.info("【兜底成功】已通过场内 ETF 基金通道成功拉取！")
+                        break
+                except Exception as ex:
+                    logger.debug(f"ETF 兜底通道报错: {ex}")
+            elif fetch_type == "stock":
+                try:
+                    logger.info(f"【兜底通道】尝试调用 stock_zh_a_hist 接口...")
+                    df_stock = ak.stock_zh_a_hist(symbol=clean_symbol, period="daily", start_date=start_str, end_date=end_str, adjust="qfq")
+                    if df_stock is not None and not df_stock.empty:
+                        df = df_stock
+                        logger.info("【兜底成功】已通过普通股票通道成功拉取！")
+                        break
+                except Exception as ex:
+                    logger.debug(f"股票兜底通道报错: {ex}")
     
     if df is None or df.empty:
         logger.warning(f"未获取到 {symbol} 的数据，请检查代码是否正确或是否在交易区间内")
         return pd.DataFrame()
         
     # AkShare 默认返回的中文列名：日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额, 振幅, 涨跌幅, 涨跌额, 换手率
-    column_mapping = {
-        '日期': 'date',
-        '开盘': 'open',
-        '最高': 'high',
-        '最低': 'low',
-        '收盘': 'close',
-        '成交量': 'volume'
-    }
-    
-    # 检查期望的列是否存在
-    missing_cols = [col for col in column_mapping.keys() if col not in df.columns]
-    if missing_cols:
-        logger.error(f"AkShare 响应的格式不符合预期，缺少列：{missing_cols}")
-        raise ValueError(f"返回数据缺少必要字段: {missing_cols}")
+    if 'date' not in df.columns and '日期' in df.columns:
+        column_mapping = {
+            '日期': 'date',
+            '开盘': 'open',
+            '最高': 'high',
+            '最低': 'low',
+            '收盘': 'close',
+            '成交量': 'volume'
+        }
         
-    # 重命名列
-    df = df.rename(columns=column_mapping)
+        # 检查期望的列是否存在
+        missing_cols = [col for col in column_mapping.keys() if col not in df.columns]
+        if missing_cols:
+            logger.error(f"AkShare 响应的格式不符合预期，缺少列：{missing_cols}")
+            raise ValueError(f"返回数据缺少必要字段: {missing_cols}")
+            
+        # 重命名列
+        df = df.rename(columns=column_mapping)
     
     # 仅保留需要的列
     required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
