@@ -15,13 +15,13 @@ import re
 import pandas as pd
 import streamlit as st
 
-from src.data_fetcher import (
+from src.data_sources import (
     fetch_daily_data,
     fetch_fund_flow,
     fetch_sentiment_score,
     fetch_top_sectors,
 )
-from src.strategy_monitor import StrategyMonitor
+from src.strategy_monitor import StrategyMonitorV2 as StrategyMonitor
 from src.analysis_report import StockAnalysisReport
 from src.reasoning_engine import ReasoningEngine
 from src.backtest_engine import BacktestConfig, run_backtest

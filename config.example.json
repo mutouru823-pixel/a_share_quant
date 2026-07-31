@@ -1,0 +1,17 @@
+{
+    "target_symbols": ["sh600519", "sz000858", "sz000001"],
+    "target_days": 200,
+    "feishu_webhook": "",
+    "caixin_api_key": "在此填入你的财新数据API Key",
+    "data_source_priority": ["tencent", "eastmoney", "akshare"],
+    "risk_params": {
+        "max_single_position": 30,
+        "stop_loss_pct": -8,
+        "take_profit_pct": 20
+    },
+    "notification": {
+        "enable_feishu": false,
+        "enable_console": true,
+        "alert_on_warning": true
+    }
+}

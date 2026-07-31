@@ -1,39 +1,83 @@
-# A 股量化分析工具
+# A股量化分析工具 v2
 
-这是一个基于 Python 的 A 股量化分析工具的基础项目结构，旨在提供健壮、自动化的股票数据获取与清洗服务。
+多源数据驱动、多维评分、风控一体化的 A 股量化分析系统。
 
-## 核心特性
-- **数据源获取**：以 AkShare 为底层数据源，稳定抓取 A 股日线数据。
-- **稳健性保障**：内置 HTTP 请求重试机制（借助 `tenacity` 库）和健全的异常捕获与日志。
-- **自动清洗**：自动剔除股票代码前缀（如 sh/sz/bj），自动转换列名为标准的 open、high、low、close、volume。
-- **标准化数据格式**：最终产出清洗为以日期为索引的 Pandas DataFrame 对象，时间序列升序排列，直接可用作量化测试。
+## 核心升级（v2）
+
+- **多源数据引擎**：腾讯财经 > 东方财富 > AkShare 三级自动降级，告别单源被封困境
+- **连续评分系统**：-100 ~ +100 精细评分，替代旧版 -1/0/+1 粗糙判定
+- **四维分析框架**：技术面(50%) + 量价面(25%) + 资金面(15%) + 舆情面(10%) 加权融合
+- **完整指标体系**：SMA/EMA/RSI/MACD/布林线/OBV/KDJ/ATR/动量/量价背离
+- **内嵌风控引擎**：8条风控规则（均线破位、RSI超买、MACD顶背离、放量滞涨等）
+- **置信度评估**：基于信号一致性、数据充足度、波动率的综合置信度
+- **仓位建议**：评分 × 置信度 × 波动率惩罚 → 量化仓位百分比
+- **财新数据增强**：接入财新数据API，NLP驱动的精准舆情 + 宏观环境研判
 
 ## 项目结构
-```text
+
+```
 a_share_quant/
-├── requirements.txt      # 依赖管理文件
-├── README.md             # 项目说明文档
-├── main.py               # 项目入口及示例演示
-└── src/
-    ├── __init__.py       # 包初始化文件
-    └── data_fetcher.py   # 数据拉取与清洗模块
+├── config.json              # 配置文件（自选股、API Key、风控参数）
+├── main.py                  # 命令行入口
+├── app.py                   # Streamlit Web 界面
+├── requirements.txt         # 依赖
+├── src/
+│   ├── data_sources.py      # [新] 多源数据引擎（腾讯/东财/AkShare）
+│   ├── caixin_data.py       # [新] 财新数据 API 客户端
+│   ├── strategy_monitor.py  # [重写] 多维策略监控引擎 v2
+│   ├── indicators_advanced.py  # 高级技术指标库
+│   ├── ml_scoring.py        # ML多因子融合评分器
+│   ├── risk_manager.py      # 风控规则引擎
+│   ├── reasoning_engine.py  # 文字解读生成
+│   ├── analysis_report.py   # 分析报告生成
+│   ├── backtest_engine.py   # 回测引擎
+│   ├── parameter_search.py  # 参数网格搜索
+│   ├── fundamental_fetcher.py  # 基本面数据
+│   ├── nlp_sentiment.py     # NLP情绪分析
+│   ├── notifier.py          # 飞书通知
+│   └── analytics.py         # 胜率追踪
+└── outputs/                 # 回测输出
 ```
 
 ## 快速开始
 
-### 1. 安装依赖
-请确保你的环境是 Python 3.8 或以上，执行以下命令安装依赖：
 ```bash
 pip install -r requirements.txt
+
+# 命令行分析
+python main.py --symbols sh600519,sz000858 --days 200
+
+# Web界面
+streamlit run app.py
 ```
 
-### 2. 运行示例
-执行 `main.py` 将演示如何拉取贵州茅台（sh600519）近 200 个交易日的数据。
-```bash
-python main.py
+## 配置说明
+
+编辑 `config.json`：
+
+```json
+{
+    "target_symbols": ["sh600519", "sz000858"],
+    "target_days": 200,
+    "caixin_api_key": "你的财新数据API Key",
+    "feishu_webhook": "飞书机器人Webhook地址"
+}
 ```
 
-## 未来可扩展功能建议
-- 添加 `src/strategy/`：用于存放量化交易策略（例如双均线策略，RSI 等）。
-- 添加 `src/backtest/`：用于集成回测引擎（如 Backtrader 或者自定义回测框架）。
-- 添加数据库支持：定期抓取全市场每天数据写入 MySQL 或 MongoDB 持久化。
+## 数据源说明
+
+| 优先级 | 数据源 | 用途 | 稳定性 |
+|--------|--------|------|--------|
+| 1 | 腾讯财经 | 实时行情、日K线 | 极高 |
+| 2 | 东方财富 | K线、资金流、板块、新闻 | 高 |
+| 3 | AkShare | 兜底（场外基金等） | 中 |
+| 增强 | 财新数据 | 宏观、NLP舆情、机构观点 | 高（付费） |
+
+## 评分体系
+
+综合评分 = 技术面×50% + 量价面×25% + 资金面×15% + 舆情面×10%
+
+- 技术面：均线排列、MACD状态、RSI、KDJ、布林带位置、动量
+- 量价面：量比、OBV趋势、量价背离、ATR波动率
+- 资金面：主力净流入分级、超大单方向
+- 舆情面：加权关键词匹配 + 财新NLP增强

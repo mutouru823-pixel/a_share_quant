@@ -1,0 +1,15 @@
+# 配置文件（含API Key，不上传）
+config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 输出
+outputs/
+analytics.db
+
+# 环境
+.env
+venv/
