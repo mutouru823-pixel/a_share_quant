@@ -546,3 +546,7 @@ def run_monitor_for_stocks(stock_data_dict: dict, extra_data: dict = None) -> tu
             continue
 
     return alerts, results
+
+
+# 向后兼容别名
+StrategyMonitor = StrategyMonitorV2
