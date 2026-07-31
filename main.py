@@ -22,6 +22,7 @@ from src.data_sources import (
 )
 from src.strategy_monitor import run_monitor_for_stocks, StrategyMonitorV2
 from src.caixin_data import init_caixin_client, fetch_caixin_sentiment, fetch_caixin_macro_context
+from src.ai_analyst import init_ai_analyst, get_ai_analyst
 
 logging.basicConfig(
     level=logging.INFO,
@@ -117,6 +118,21 @@ def main():
     else:
         logger.info("未配置财新数据 API Key，使用免费数据源")
 
+    # 初始化AI分析师
+    ai_cfg = config.get("ai_analyst", {})
+    if ai_cfg.get("enabled") and ai_cfg.get("api_key"):
+        ai = init_ai_analyst(
+            api_key=ai_cfg["api_key"],
+            base_url=ai_cfg.get("base_url", "https://apihub.agnes-ai.com/v1"),
+            model=ai_cfg.get("model", "agnes-2.0-flash"),
+        )
+        if ai.health_check():
+            logger.info(f"AI 分析师已就绪 (模型: {ai_cfg.get('model', 'agnes-2.0-flash')})")
+        else:
+            logger.info("AI 分析师连接失败，将仅输出量化数据")
+    else:
+        logger.info("未启用 AI 分析师")
+
     if not target_symbols:
         logger.error("自选股列表为空，请检查 config.json")
         sys.exit(1)
@@ -190,6 +206,32 @@ def main():
 
     # === 阶段3: 输出报告 ===
     print_analysis_report(results, alerts, sectors, macro_ctx)
+
+    # === 阶段4: AI 深度分析 ===
+    ai = get_ai_analyst()
+    if ai:
+        print("\n" + "=" * 70)
+        print("  AI 智能分析师研判")
+        print("=" * 70)
+
+        # 市场总览
+        overview = ai.market_overview(sectors, results, macro_ctx)
+        if overview:
+            print(f"\n【市场总览】\n{overview}")
+
+        # 个股深度分析
+        for r in results:
+            analysis = ai.analyze_stock(r, extra_data.get(r["symbol"], {}).get("fund_data"))
+            if analysis:
+                print(f"\n【{r['symbol']} AI研判】\n{analysis}")
+
+        # 风控AI解读
+        if alerts:
+            risk_text = ai.risk_alert(alerts)
+            if risk_text:
+                print(f"\n【风控AI研判】\n{risk_text}")
+
+        print("\n" + "=" * 70)
 
     # 飞书通知（如果配置了）
     feishu_webhook = config.get("feishu_webhook", "")
