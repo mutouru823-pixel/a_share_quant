@@ -8,7 +8,7 @@ import akshare as ak
 import numpy as np
 import pandas as pd
 
-from src.data_fetcher import fetch_daily_data
+from src.data_sources import fetch_daily_data
 from src.strategy_monitor import StrategyMonitor
 
 logger = logging.getLogger(__name__)

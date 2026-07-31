@@ -3,7 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 import pandas as pd
-from src.data_fetcher import fetch_daily_data
+from src.data_sources import fetch_daily_data
 
 logger = logging.getLogger(__name__)
 
