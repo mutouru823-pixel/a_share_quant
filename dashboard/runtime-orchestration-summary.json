@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "1.0",
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.07.22.00.00.00",
+    "version_source": "skill-release-manifest.json",
+    "read_status": "loaded"
+  },
+  "project": {
+    "resolvedLane": "complex_html_page",
+    "intentProfile": "single-page-dashboard",
+    "operation": "create",
+    "selectedIntentWorkflowRead": true,
+    "contextRequirementsLoaded": [
+      { "path": "intent-workflows/intent-project-complex-build/INTENT_WORKFLOW.md", "readStatus": "loaded", "bodyRead": true },
+      { "path": "shared-runtime/design-artifact-formats/design-project-file-format.md", "readStatus": "loaded", "bodyRead": true },
+      { "path": "shared-runtime/orchestration-summary-contract/orchestration-summary-contract.md", "readStatus": "loaded", "bodyRead": true }
+    ],
+    "contextReadScope": "complex_html_page",
+    "readScopeLedger": [],
+    "dispatchPreflightManifest": [],
+    "expectedDispatches": [],
+    "validationRunDiscipline": "strict",
+    "validationHistory": [],
+    "validationRepairLedger": [],
+    "validationSnapshot": {},
+    "artifactReadinessEvidence": {},
+    "lowValueCallWatchdog": {
+      "noProgressNextAction": "proceed_to_dispatch"
+    },
+    "designRead": "金融量化仪表盘 / 个人投资者 / 专业冷静 / 中高密度 / 避免卡通化或过度装饰",
+    "designDials": {
+      "layoutVariance": 3,
+      "motionIntensity": 2,
+      "visualDensity": 4
+    },
+    "deviceType": "desktop",
+    "projectName": "A股量化分析仪表盘"
+  },
+  "designSource": {
+    "operatingMode": "free-explore",
+    "cssFilePath": "colors_and_type.css",
+    "brandPrefix": "aq",
+    "styleConstraints": {
+      "radiusMax": 16,
+      "staticShadowAlphaMax": 0.05
+    }
+  },
+  "pages": [
+    {
+      "nodeId": "page-index",
+      "title": "A股量化分析主控台",
+      "htmlSrc": "pages/index.html",
+      "pageIndex": 1,
+      "visualNorthStar": "TradingView 风格深色金融仪表盘：深海军蓝底、霓虹蓝强调、数据卡片、K线红绿、专业密度",
+      "compositionPattern": "顶部导航 + 搜索控制区 + KPI 卡片区 + 主内容网格（左侧评分列表 + 右侧图表/风控）+ 底栏",
+      "continuityAnchors": [
+        "全局深色表面与 1px 细边框贯穿所有卡片",
+        "品牌蓝色仅用于主按钮、激活态、关键数据高亮"
+      ],
+      "componentPlan": {
+        "cards": ["kpi-ticker", "score-card", "risk-alert", "sector-row"],
+        "inputs": ["symbol-combobox", "days-slider"],
+        "dataViz": ["sparkline", "score-bar"]
+      },
+      "imagePlan": [],
+      "chartsRequired": ["score-distribution", "price-sparkline"]
+    }
+  ],
+  "assets": [],
+  "wiringPlan": [],
+  "hiddenInteractionPlan": []
+}

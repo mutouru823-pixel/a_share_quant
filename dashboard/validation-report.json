@@ -1,0 +1,111 @@
+{
+  "success": true,
+  "outcome": "passed",
+  "repairable": true,
+  "terminalViolations": [],
+  "terminalBlockingSummary": null,
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.07.22.00.00.00",
+    "version_source": "skill-release-manifest.json",
+    "runtime_skill_dir": null,
+    "recorded_at": null,
+    "expected_version": "2026.07.22.00.00.00",
+    "status": "matched",
+    "read_status": "loaded"
+  },
+  "operatingMode": "free-explore",
+  "renderBlockingErrorCount": 0,
+  "softWarningCount": 2,
+  "renderBlockingErrors": [],
+  "errorSignatures": [],
+  "softWarnings": [
+    "[html-quality] colors_and_type.css: ordinary/static shadow tokens must keep every shadow alpha <= 0.05; deeper shadows are allowed only for floating-layer tokens such as modal/popover/dropdown/drawer/overlay (--aq-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15), --aq-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25), --aq-shadow-glow: 0 0 24px rgba(41, 98, 255, 0.12)).",
+    "[html-quality] index.html: hardcoded colors are forbidden outside <style id=\"theme-vars\">. Use brand CSS variables from the token reference."
+  ],
+  "repairPlanHints": [
+    {
+      "errorClass": "hardcoded-color-in-body",
+      "owner": "sub-agent",
+      "repairScope": "targeted-token-replace",
+      "strategy": "targeted_token_replace_once",
+      "affectedFiles": [
+        "index.html"
+      ],
+      "repairReportPath": null,
+      "repairAlreadyAttempted": false,
+      "allowSourceRead": "no-full-html-read",
+      "maxValidationRuns": 2
+    }
+  ],
+  "repairActionTable": [],
+  "errorCount": 0,
+  "warningCount": 2,
+  "errors": [],
+  "warnings": [
+    "[html-quality] colors_and_type.css: ordinary/static shadow tokens must keep every shadow alpha <= 0.05; deeper shadows are allowed only for floating-layer tokens such as modal/popover/dropdown/drawer/overlay (--aq-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15), --aq-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25), --aq-shadow-glow: 0 0 24px rgba(41, 98, 255, 0.12)).",
+    "[html-quality] index.html: hardcoded colors are forbidden outside <style id=\"theme-vars\">. Use brand CSS variables from the token reference."
+  ],
+  "validationRunDisciplineStatus": {
+    "declared": true,
+    "restoreMode": false,
+    "maxFullValidationRuns": null,
+    "validationHistoryCount": 0,
+    "repairLedgerCount": 0,
+    "softWarningsTriggerRepair": null,
+    "terminalState": null,
+    "nextAction": null,
+    "violations": [],
+    "success": true
+  },
+  "terminalState": null,
+  "nextCheck": {
+    "type": "finish-readiness",
+    "command": "node '/data/user/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs' '/workspace/a_share_quant/dashboard' --check=all",
+    "fullValidationAllowed": false,
+    "reason": "workspace validation passed; run complete finish readiness before final delivery"
+  },
+  "repairBatch": [],
+  "repairContextPacket": {
+    "schema_version": "1.0",
+    "purpose": "small-context repair packet; read this before full validation-report.json",
+    "success": true,
+    "terminalState": null,
+    "skillProvenance": {
+      "name": "solo-design",
+      "version": "2026.07.22.00.00.00",
+      "version_source": "skill-release-manifest.json",
+      "runtime_skill_dir": null,
+      "recorded_at": null,
+      "expected_version": "2026.07.22.00.00.00",
+      "status": "matched",
+      "read_status": "loaded"
+    },
+    "renderBlockingErrorCount": 0,
+    "softWarningCount": 2,
+    "renderBlockingErrors": [],
+    "repairActionTable": [],
+    "nextCheck": {
+      "type": "finish-readiness",
+      "command": "node '/data/user/builtin/design/default/skills/solo-design/shared-runtime/deterministic-tooling/validate-finish-readiness.mjs' '/workspace/a_share_quant/dashboard' --check=all",
+      "fullValidationAllowed": false,
+      "reason": "workspace validation passed; run complete finish readiness before final delivery"
+    },
+    "forbidden": [
+      "do not read validator source",
+      "do not rerun full validation when nextCheck.fullValidationAllowed=false",
+      "do not start preview/browser unless user explicitly asks",
+      "do not hand-edit repair ledger fields"
+    ]
+  },
+  "projectFileHashes": {
+    "a_share_quant_dashboard.design": "d03ed9d6d2f2cdbb1a1ddf4560461f22682104997014130a8f9bcd312d1af337",
+    "colors_and_type.css": "a1708d2749874300084b5089760b81ec02cb650d561dae5353a71a8b2c49066c",
+    "runtime-orchestration-summary.json": "ef519cf97b92eb205974b3dfefc3c2c3cf4d4c7776d99674764e0b03fbc3dc43",
+    "pages/index.html": "0578e9615986553306ad760de1c0af85d615ef90ff4f1fb521526018eeb9f927"
+  },
+  "designDir": "/workspace/a_share_quant/dashboard",
+  "expectedPages": null,
+  "requireInteractions": null,
+  "checkedAt": "2026-08-01T16:44:13.409Z"
+}

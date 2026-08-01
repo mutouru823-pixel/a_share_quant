@@ -47,8 +47,13 @@ pip install -r requirements.txt
 # 命令行分析
 python main.py --symbols sh600519,sz000858 --days 200
 
-# Web界面
+# 新版 Web 仪表盘（推荐）
+python api_server.py
+# 打开 http://localhost:8000
+
+# Streamlit 保底界面
 streamlit run app.py
+# 打开 http://localhost:8501
 ```
 
 ## 配置说明

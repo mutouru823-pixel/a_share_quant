@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "id": "page-index",
+      "title": "A股量化分析主控台",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1754144400000,
+      "devMetadata": {
+        "htmlSrc": "pages/index.html",
+        "interactions": []
+      },
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop",
+    "projectName": "A股量化分析仪表盘",
+    "designLibrary": null
+  }
+}

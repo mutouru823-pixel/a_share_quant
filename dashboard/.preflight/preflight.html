@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preflight</title>
+    <style id="theme-vars">
+/* A股量化分析仪表盘 - 品牌设计令牌 */
+/* TradingView 风格深色金融仪表盘 */
+
+@layer theme {
+  :root {
+    /* Brand Primary - TradingView Blue */
+    --aq-primary-50: #e8efff;
+    --aq-primary-100: #c5d8ff;
+    --aq-primary-200: #94b8ff;
+    --aq-primary-300: #6193ff;
+    --aq-primary-400: #3b76ff;
+    --aq-primary-500: #2962ff;
+    --aq-primary-600: #1f4fd9;
+    --aq-primary-700: #183db3;
+    --aq-primary-800: #122d8a;
+    --aq-primary-900: #0c1f61;
+
+    /* Neutral Scale */
+    --aq-neutral-0: #ffffff;
+    --aq-neutral-50: #f7f8fa;
+    --aq-neutral-100: #eceef2;
+    --aq-neutral-200: #d5d9e2;
+    --aq-neutral-300: #b0b7c8;
+    --aq-neutral-400: #8a94a8;
+    --aq-neutral-500: #6b7280;
+    --aq-neutral-600: #4b5563;
+    --aq-neutral-700: #374151;
+    --aq-neutral-800: #1f2937;
+    --aq-neutral-900: #111827;
+    --aq-neutral-950: #030712;
+
+    /* Surface Scale (dark theme) */
+    --aq-surface-base: #0c0d14;
+    --aq-surface-elevated: #131722;
+    --aq-surface-hover: #1e222d;
+    --aq-surface-active: #2a2e39;
+    --aq-border: #2a2e39;
+    --aq-border-subtle: #1e222d;
+
+    /* Text Scale */
+    --aq-text-primary: #d1d4dc;
+    --aq-text-secondary: #787b86;
+    --aq-text-muted: #5d606b;
+    --aq-text-inverse: #0c0d14;
+
+    /* State Semantic */
+    --state-success: #00c076;
+    --state-success-bg: rgba(0, 192, 118, 0.12);
+    --state-warning: #f59e0b;
+    --state-warning-bg: rgba(245, 158, 11, 0.12);
+    --state-error: #ff3b30;
+    --state-error-bg: rgba(255, 59, 48, 0.12);
+    --state-info: #2962ff;
+    --state-info-bg: rgba(41, 98, 255, 0.12);
+
+    /* Semantic Aliases */
+    --aq-background: var(--aq-surface-base);
+    --aq-foreground: var(--aq-text-primary);
+    --aq-card: var(--aq-surface-elevated);
+    --aq-card-foreground: var(--aq-text-primary);
+    --aq-popover: var(--aq-surface-elevated);
+    --aq-popover-foreground: var(--aq-text-primary);
+    --aq-primary: var(--aq-primary-500);
+    --aq-primary-foreground: var(--aq-neutral-0);
+    --aq-muted: var(--aq-surface-hover);
+    --aq-muted-foreground: var(--aq-text-secondary);
+    --aq-border: var(--aq-border);
+    --aq-input: var(--aq-surface-active);
+    --aq-ring: var(--aq-primary-500);
+
+    /* Radius */
+    --aq-radius-sm: 4px;
+    --aq-radius-md: 8px;
+    --aq-radius-lg: 12px;
+    --aq-radius-full: 9999px;
+
+    /* Typography */
+    --aq-font-sans: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --aq-font-mono: 'Fira Code', 'JetBrains Mono', 'SF Mono', monospace;
+
+    /* Shadows - only for floating layers */
+    --aq-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --aq-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --aq-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25);
+    --aq-shadow-glow: 0 0 24px rgba(41, 98, 255, 0.12);
+
+    /* Spacing */
+    --aq-space-1: 4px;
+    --aq-space-2: 8px;
+    --aq-space-3: 12px;
+    --aq-space-4: 16px;
+    --aq-space-5: 20px;
+    --aq-space-6: 24px;
+    --aq-space-8: 32px;
+    --aq-space-10: 40px;
+    --aq-space-12: 48px;
+  }
+}
+
+@layer utilities {
+  .text-positive { color: var(--state-success); }
+  .text-negative { color: var(--state-error); }
+  .bg-positive { background-color: var(--state-success-bg); }
+  .bg-negative { background-color: var(--state-error-bg); }
+  .font-mono { font-family: var(--aq-font-mono); }
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--aq-background);
+    --color-foreground: var(--aq-foreground);
+    --color-card: var(--aq-card);
+    --color-card-foreground: var(--aq-card-foreground);
+    --color-popover: var(--aq-popover);
+    --color-popover-foreground: var(--aq-popover-foreground);
+    --color-primary: var(--aq-primary);
+    --color-primary-foreground: var(--aq-primary-foreground);
+    --color-muted: var(--aq-muted);
+    --color-muted-foreground: var(--aq-muted-foreground);
+    --color-border: var(--aq-border);
+    --color-input: var(--aq-input);
+    --color-ring: var(--aq-ring);
+    --radius-sm: var(--aq-radius-sm);
+    --radius-md: var(--aq-radius-md);
+    --radius-lg: var(--aq-radius-lg);
+  }
+  @layer base {
+    body { background: var(--aq-background); color: var(--aq-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--aq-background); }
+      .text-background { color: var(--aq-background); }
+      .border-background { border-color: var(--aq-background); }
+      .ring-background { --tw-ring-color: var(--aq-background); }
+      .bg-foreground { background-color: var(--aq-foreground); }
+      .text-foreground { color: var(--aq-foreground); }
+      .border-foreground { border-color: var(--aq-foreground); }
+      .ring-foreground { --tw-ring-color: var(--aq-foreground); }
+      .bg-card { background-color: var(--aq-card); }
+      .text-card { color: var(--aq-card); }
+      .border-card { border-color: var(--aq-card); }
+      .ring-card { --tw-ring-color: var(--aq-card); }
+      .bg-card-foreground { background-color: var(--aq-card-foreground); }
+      .text-card-foreground { color: var(--aq-card-foreground); }
+      .border-card-foreground { border-color: var(--aq-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--aq-card-foreground); }
+      .bg-popover { background-color: var(--aq-popover); }
+      .text-popover { color: var(--aq-popover); }
+      .border-popover { border-color: var(--aq-popover); }
+      .ring-popover { --tw-ring-color: var(--aq-popover); }
+      .bg-popover-foreground { background-color: var(--aq-popover-foreground); }
+      .text-popover-foreground { color: var(--aq-popover-foreground); }
+      .border-popover-foreground { border-color: var(--aq-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--aq-popover-foreground); }
+      .bg-primary { background-color: var(--aq-primary); }
+      .text-primary { color: var(--aq-primary); }
+      .border-primary { border-color: var(--aq-primary); }
+      .ring-primary { --tw-ring-color: var(--aq-primary); }
+      .bg-primary-foreground { background-color: var(--aq-primary-foreground); }
+      .text-primary-foreground { color: var(--aq-primary-foreground); }
+      .border-primary-foreground { border-color: var(--aq-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--aq-primary-foreground); }
+      .bg-muted { background-color: var(--aq-muted); }
+      .text-muted { color: var(--aq-muted); }
+      .border-muted { border-color: var(--aq-muted); }
+      .ring-muted { --tw-ring-color: var(--aq-muted); }
+      .bg-muted-foreground { background-color: var(--aq-muted-foreground); }
+      .text-muted-foreground { color: var(--aq-muted-foreground); }
+      .border-muted-foreground { border-color: var(--aq-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--aq-muted-foreground); }
+      .bg-border { background-color: var(--aq-border); }
+      .text-border { color: var(--aq-border); }
+      .border-border { border-color: var(--aq-border); }
+      .ring-border { --tw-ring-color: var(--aq-border); }
+      .bg-input { background-color: var(--aq-input); }
+      .text-input { color: var(--aq-input); }
+      .border-input { border-color: var(--aq-input); }
+      .ring-input { --tw-ring-color: var(--aq-input); }
+      .bg-ring { background-color: var(--aq-ring); }
+      .text-ring { color: var(--aq-ring); }
+      .border-ring { border-color: var(--aq-ring); }
+      .ring-ring { --tw-ring-color: var(--aq-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
