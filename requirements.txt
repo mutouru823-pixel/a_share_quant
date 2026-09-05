@@ -11,7 +11,7 @@ tenacity>=8.0.0
 akshare>=1.2.0
 
 # Streamlit Web界面（保底方案）
-streamlit>=1.30.0
+streamlit>=1.32.0
 plotly>=5.18.0
 
 # 新的 Web API + 前端服务
